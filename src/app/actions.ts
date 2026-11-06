@@ -47,20 +47,15 @@ export async function setLocale(form: FormData) {
   });
   revalidatePath("/");
 }
-export async function selectBusiness(form: FormData) {
-  await requireAccess();
-  const id = uuid(form.get("business"));
-  if (
-    !(await (await db()).query("select id from businesses where id=$1", [id]))
-      .rows.length
-  )
-    return;
-  (await cookies()).set("business", id, {
-    httpOnly: true,
-    sameSite: "strict",
-    path: "/",
+export async function selectBusiness(_: ActionState, form: FormData) {
+  return run(async () => {
+    const id = uuid(form.get("business"));
+    if (!(await (await db()).query("select id from businesses where id=$1", [id])).rows.length)
+      throw new DomainError("business");
+    (await cookies()).set("business", id, {
+      httpOnly: true, sameSite: "strict", path: "/",
+    });
   });
-  revalidatePath("/");
 }
 export async function saveProfile(_: ActionState, form: FormData) {
   return run(async () => {

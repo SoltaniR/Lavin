@@ -3,13 +3,14 @@
 async (page) => {
   const base = new URL(page.url()).origin;
   const check = (condition, message) => { if (!condition) throw new Error(message); };
-  await page.goto(base + '/?view=business&new=1');
+  await page.goto(base + '/?view=setup');
   await page.getByRole('button', {name:'EN',exact:true}).click();
   await page.getByLabel('Business name').fill('QA Studio ' + Date.now());
+  await page.getByRole('button',{name:'Next: your records',exact:true}).click();
   await page.getByLabel('VAT accounting method').selectOption('invoice');
   await page.getByLabel('This is my first financial year').check();
-  await page.getByRole('button',{name:'Create workspace'}).click();
-  await page.getByText('Saved successfully.',{exact:false}).waitFor();
+  await page.getByRole('button',{name:'Create report and add documents',exact:true}).click();
+  await page.waitForURL(base + '/?view=documents');
   await page.goto(base + '/?view=review');
   async function entry(kind, description, amount, vat, debit, credit) {
     const panel = page.locator('.entry-panel');
@@ -78,7 +79,7 @@ async (page) => {
   await page.pdf({path:'output/playwright/report-nl.pdf',format:'A4',printBackground:true});
   await page.emulateMedia({media:'screen'});
   await page.setViewportSize({width:390,height:844});
-  await page.goto(base);
+  await page.goto(base + '/?view=overview');
   check(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'Mobile page overflows horizontally');
   await page.screenshot({path:'output/playwright/mobile.png',fullPage:true});
   await page.setViewportSize({width:1440,height:1000});

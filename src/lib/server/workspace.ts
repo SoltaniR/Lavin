@@ -24,7 +24,7 @@ export async function businesses() {
 export async function currentBusiness(): Promise<Business | null> {
   const list = await businesses();
   const selected = (await cookies()).get("business")?.value;
-  return list.find((b) => b.id === selected) ?? list[0] ?? null;
+  return list.find((b) => b.id === selected) ?? null;
 }
 export async function needBusiness() {
   const b = await currentBusiness();

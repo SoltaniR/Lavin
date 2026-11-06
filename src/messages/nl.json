@@ -18,7 +18,10 @@
     "review": "Boekhouding",
     "yearend": "Jaarafsluiting",
     "report": "Jaarrapport",
-    "guide": "Aan de slag"
+    "guide": "Aan de slag",
+    "home": "Start",
+    "companies": "Opgeslagen rapporten",
+    "setup": "Nieuw rapport"
   },
   "common": {
     "save": "Wijzigingen opslaan",
@@ -273,16 +276,16 @@
   },
   "guide": {
     "title": "Je eerste rapport, stap voor stap",
-    "intro": "Begin met je bedrijfsgegevens en volg deze vijf stappen. Via het menu kun je altijd terug naar een eerdere stap.",
+    "intro": "Kies op de startpagina Een nieuw rapport starten of Een bestaand rapport openen. Volg daarna deze vijf stappen. Je opgeslagen gegevens blijven bewaard totdat je ze opent.",
     "quickTitle": "Voor het eerst in Lavin?",
     "quickText": "Volg de korte handleiding van je eerste upload tot een conceptrapport.",
     "open": "Lees de handleiding",
     "help": "Wat doe ik op deze pagina?",
     "business": {
       "title": "Stel je bedrijf in",
-      "text": "Vul je bedrijfsnaam en boekjaar in. Kies je activiteit en vink aan wat van toepassing is, zoals contante verkopen of bedrijfsmiddelen. Sla je gegevens op.",
+      "text": "Kies op de startpagina Een nieuw rapport starten. Vul bedrijfsnaam, boekjaar en activiteit in en kies Verder: je administratie. Vink aan wat van toepassing is en maak het rapport aan. Kies Bedrijfsgegevens wijzigen op de startpagina om een opgeslagen bedrijf bij te werken.",
       "tip": "Weet je niet welk btw-stelsel je gebruikt? Kies “Nog niet zeker” en vraag je boekhouder. Na het aanmaken kun je het boekjaar van deze werkruimte niet meer wijzigen.",
-      "action": "Open bedrijfsgegevens"
+      "action": "Een nieuw rapport starten"
     },
     "documents": {
       "title": "Upload je documenten",
@@ -319,5 +322,58 @@
     "payablesText": "Geld dat je nog aan leveranciers moet betalen.",
     "opening": "Beginbalans",
     "openingText": "Wat je bedrijf aan het begin van het jaar bezat en verschuldigd was."
+  },
+  "home": {
+    "title": "Wat wil je doen?",
+    "subtitle": "Start een rapport, ga verder waar je was gebleven of werk bedrijfsgegevens bij.",
+    "new": "Een nieuw rapport starten",
+    "newHelp": "Stel een bedrijf en boekjaar in. We helpen je stap voor stap verder.",
+    "start": "Begin met de bedrijfsgegevens",
+    "existing": "Een bestaand rapport openen",
+    "existingHelp": "Kies een opgeslagen bedrijf en boekjaar om verder te werken of de cijfers te bekijken.",
+    "edit": "Bedrijfsgegevens wijzigen",
+    "editHelp": "Pas de bedrijfsnaam, activiteit of boekhoudgegevens aan.",
+    "sample": "Even rondkijken? Probeer een voorbeeld",
+    "sampleHelp": "Open een fictieve salon om de app te ontdekken. De voorbeeldcijfers staan in een apart rapport."
+  },
+  "companies": {
+    "title": "Kies een rapport",
+    "subtitle": "Elk rapport hoort bij één bedrijf en één boekjaar.",
+    "editTitle": "Welk bedrijf wil je bijwerken?",
+    "editHelp": "Kies Gegevens wijzigen om bedrijfsinformatie aan te passen. Kies Rapport openen voor boekingen of toelichtingen.",
+    "search": "Zoek een bedrijf of boekjaar",
+    "searchHint": "Bedrijfsnaam of boekjaar",
+    "count": "{count, plural, one {# opgeslagen rapport} other {# opgeslagen rapporten}}",
+    "open": "Rapport openen",
+    "edit": "Gegevens wijzigen",
+    "empty": "Nog geen opgeslagen rapporten",
+    "emptyHelp": "Start een nieuw rapport om je eerste bedrijf toe te voegen.",
+    "noMatch": "Geen passende rapporten",
+    "trySearch": "Probeer een andere naam of een ander jaar, of wis je zoekopdracht."
+  },
+  "setup": {
+    "title": "Een nieuw rapport starten",
+    "subtitle": "Vertel eerst voor welk bedrijf en boekjaar dit rapport is. Je andere rapporten blijven apart.",
+    "part": "Bedrijf instellen · {step} van 2",
+    "basics": "Voor welk bedrijf is dit?",
+    "basicsHelp": "Vul een naam in en kies het boekjaar. Het KvK-nummer is optioneel.",
+    "records": "Vertel iets over je administratie",
+    "recordsHelp": "Vink alleen aan wat van toepassing is. Twijfel je over de btw? Laat “Nog niet zeker” staan. Je kunt deze gegevens later aanpassen.",
+    "next": "Verder: je administratie",
+    "back": "Terug naar bedrijfsgegevens",
+    "create": "Rapport aanmaken en documenten toevoegen"
+  },
+  "flow": {
+    "label": "Stappen voor je rapport",
+    "position": "Stap {step} van 5",
+    "business": "Bedrijf",
+    "documents": "Documenten",
+    "review": "Boekhouding",
+    "yearend": "Jaarafsluiting",
+    "report": "Conceptrapport",
+    "saveFirst": "Sla je wijzigingen op voordat je verdergaat. Je kunt altijd terug naar een eerdere stap.",
+    "next": "Verder: {name}",
+    "back": "Vorige stap",
+    "return": "Terug naar opgeslagen rapporten"
   }
 }

@@ -3,6 +3,9 @@ import { redirect } from "next/navigation";
 import { hasAccess, configuration } from "@/lib/server/access";
 import { LogoutButton } from "@/components/login-form";
 import { UserGuide, TaskHelp } from "@/components/user-guide";
+import { ReportHome } from "@/components/report-home";
+import { CompanyPicker } from "@/components/company-picker";
+import { ReportSteps, ReportNext } from "@/components/report-steps";
 import Decimal from "decimal.js";
 import { Suspense } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -15,16 +18,14 @@ import {
   FolderOpen,
   Plus,
   ShieldCheck,
-  Sprout,
 } from "lucide-react";
 import { businesses, workspace } from "@/lib/server/workspace";
 import { requirements } from "@/lib/model";
 import { financials, readiness } from "@/lib/accounting";
-import { setLocale, selectBusiness } from "./actions";
+import { setLocale } from "./actions";
 import { Navigation } from "@/components/navigation";
 import {
   ProfileForm,
-  DemoForm,
   EntryForm,
   UploadForm,
   EvidenceForm,
@@ -42,15 +43,19 @@ export default async function Page({
   try { allowed = await hasAccess(); } catch { /* Fail closed to setup message. */ }
   if (!allowed) redirect("/login");
   const protectedPreview = Boolean(configuration().hash);
-  const [params, t, locale, w, list] = await Promise.all([
-    searchParams,
+  const params = await searchParams;
+  const views = ["home", "companies", "setup", "overview", "business", "documents", "review", "yearend", "report", "guide"];
+  const requested = params.view === "business" && params.new ? "setup" : params.view ?? "home";
+  const view = views.includes(requested) ? requested : "home";
+  const companyView = !["home", "companies", "setup", "guide"].includes(view);
+  const [t, locale, w, list] = await Promise.all([
     getTranslations(),
     getLocale(),
-    workspace(),
-    businesses(),
+    companyView ? workspace() : Promise.resolve(null),
+    view === "companies" ? businesses() : Promise.resolve([]),
   ]);
-  const view = params.view ?? "overview",
-    p = w?.business.profile;
+  if (companyView && !w) redirect("/?view=companies");
+  const p = w?.business.profile;
   const money = (v: string) =>
     new Intl.NumberFormat(locale === "nl" ? "nl-NL" : "en-GB", {
       style: "currency",
@@ -87,15 +92,15 @@ export default async function Page({
           <span className="brand-dot">.</span>
         </Link>
         <p className="brand-caption">{t("app.tagline")}</p>
-        <div className="business-chip">
+        {p && <div className="business-chip">
           <span className="business-avatar">{p?.name.charAt(0) ?? "L"}</span>
           <div>
             <strong>{p?.name ?? "Lavin"}</strong>
             <span>{p ? `${t("app.year")} ${p.year}` : t("app.local")}</span>
           </div>
-        </div>
+        </div>}
         <Suspense>
-          <Navigation />
+          <Navigation selected={Boolean(w)} />
         </Suspense>
         <div className="sidebar-bottom">
           <div className="local-label">
@@ -110,7 +115,7 @@ export default async function Page({
           <div className="breadcrumb">
             Lavin <span>/</span>{" "}
             {t(
-              `nav.${["overview", "business", "documents", "review", "yearend", "report", "guide"].includes(view) ? view : "overview"}`,
+              `nav.${view}`,
             )}
           </div>
           <div className="topbar-actions">
@@ -137,56 +142,27 @@ export default async function Page({
           </div>
         </header>
         <main id="main">
+          {view === "home" && <ReportHome />}
+          {view === "companies" && <CompanyPicker businesses={list} editing={params.mode === "edit"} />}
+          {(w || view === "setup") && <ReportSteps view={view} ready={Boolean(w)} />}
+          {view === "setup" && <div className="setup-layout"><header className="page-heading"><h1>{t("setup.title")}</h1><p>{t("setup.subtitle")}</p></header>
+            <section className="panel setup-panel"><ProfileForm guided /></section></div>}
           {view === "guide" && <UserGuide />}
           {view !== "guide" && view !== "overview" && <TaskHelp view={view} />}
-          {!w && view !== "business" && view !== "guide" ? (
-            <div className="welcome">
-              <div className="welcome-art">
-                <Sprout size={46} strokeWidth={1.4} />
-              </div>
-              <h1>{t("overview.welcome")}</h1>
-              <p>{t("overview.welcomeText")}</p>
-              <Link className="button primary" href="/?view=business">
-                {t("overview.setup")}
-                <ArrowRight size={18} />
-              </Link>
-              <DemoForm />
-            </div>
-          ) : null}
-          {view === "business" && (
+          {w && view === "business" && (
             <>
               {title("business")}
               <div className="content-split">
                 <section className="panel">
-                  <ProfileForm
-                    key={params.new ? "new" : (w?.business.id ?? "new")}
-                    business={params.new ? undefined : w?.business}
-                  />
+                  <ProfileForm key={w.business.id} business={w.business} />
                 </section>
                 <aside className="side-note">
                   <h3>{t("app.switch")}</h3>
-                  {list.length > 0 && (
-                    <form action={selectBusiness}>
-                      <label>
-                        <span className="sr-only">{t("app.switch")}</span>
-                        <select name="business" defaultValue={w?.business.id}>
-                          {list.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.profile.name} · {b.profile.year}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button className="button secondary">
-                        {t("common.open")}
-                      </button>
-                    </form>
-                  )}
-                  <Link className="text-link" href="/?view=business&new=1">
+                  <Link className="text-link" href="/?view=companies">{t("companies.title")}</Link>
+                  <Link className="text-link" href="/?view=setup">
                     <Plus size={16} />
                     {t("app.new")}
                   </Link>
-                  <DemoForm />
                 </aside>
               </div>
             </>
@@ -555,6 +531,7 @@ export default async function Page({
               />
             </>
           )}
+          {w && <ReportNext view={view} />}
         </main>
         <footer className="app-footer">
           <span>{t("app.footer")}</span>

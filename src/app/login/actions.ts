@@ -15,6 +15,7 @@ export async function login(_: { error?: string; success?: boolean }, form: Form
     (await cookies()).set(COOKIE_NAME, result.token!, {
       httpOnly: true, secure: config.secure, sameSite: "strict", path: "/", maxAge: SESSION_SECONDS,
     });
+    (await cookies()).delete("business");
   } catch { return { error: "accessDenied" }; }
   return { success: true };
 }
@@ -23,6 +24,7 @@ export async function logout() {
   const jar = await cookies();
   await sessions.revoke(jar.get(COOKIE_NAME)?.value);
   jar.delete(COOKIE_NAME);
+  jar.delete("business");
 }
 export async function loginLocale(form: FormData) {
   const config = await checkRequest(true);

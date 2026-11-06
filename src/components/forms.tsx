@@ -35,6 +35,9 @@ export function ActionForm({
   reset = false,
   className = "",
   nextHref,
+  successHref,
+  submitHidden = false,
+  onNext,
 }: {
   action: Action;
   children?: ReactNode;
@@ -42,6 +45,9 @@ export function ActionForm({
   reset?: boolean;
   className?: string;
   nextHref?: string;
+  successHref?: string;
+  submitHidden?: boolean;
+  onNext?: () => void;
 }) {
   const t = useTranslations(),
     [state, submit, pending] = useActionState(action, {}),
@@ -52,18 +58,22 @@ export function ActionForm({
   }, []);
   useEffect(() => {
     if (state.success) {
+      if (successHref) { window.location.assign(successHref); return; }
       if (reset) ref.current?.reset();
       setKey(crypto.randomUUID());
     }
-  }, [state, reset]);
+  }, [state, reset, successHref]);
   return (
-    <form action={submit} ref={ref} className={className}>
+    <form action={submit} ref={ref} className={className} onSubmit={event => {
+      if (submitHidden) { event.preventDefault(); onNext?.(); }
+    }}>
       <input type="hidden" name="requestKey" value={key} />
-      <fieldset disabled={pending}>
+      <fieldset disabled={pending || Boolean(state.success && successHref)}>
         {children}
         <button
           className="button primary"
           type="submit"
+          hidden={submitHidden}
           disabled={!key || pending}
         >
           {pending ? <LoaderCircle size={17} className="spin" /> : null}
@@ -94,20 +104,39 @@ export function DemoForm() {
       action={loadDemo}
       label={t("app.sample")}
       className="demo-form"
+      successHref="/?view=overview"
     />
   );
 }
-export function ProfileForm({ business }: { business?: Business }) {
+export function ProfileForm({ business, guided = false }: { business?: Business; guided?: boolean }) {
   const t = useTranslations(),
     p = business?.profile ?? defaultProfile;
+  const [step, setStep] = useState(1);
+  const firstPanel = useRef<HTMLDivElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const next = () => {
+    const name = firstPanel.current?.querySelector<HTMLInputElement>('input[name="name"]');
+    if (name) name.value = name.value.trim();
+    const fields = firstPanel.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input,select") ?? [];
+    for (const field of fields) if (!field.reportValidity()) return;
+    setStep(2);
+  };
+  useEffect(() => { if (guided) heading.current?.focus(); }, [step, guided]);
   return (
     <ActionForm
       action={saveProfile}
-      label={t(business ? "common.save" : "business.create")}
+      label={t(guided ? "setup.create" : business ? "common.save" : "business.create")}
       className="profile-form"
-      nextHref="/?view=documents"
+      nextHref={business ? "/?view=overview" : "/?view=documents"}
+      successHref={guided ? "/?view=documents" : undefined}
+      submitHidden={guided && step === 1}
+      onNext={next}
     >
+      {guided && <div className="setup-heading"><p className="muted">{t("setup.part", { step })}</p>
+        <h2 tabIndex={-1} ref={heading}>{t(step === 1 ? "setup.basics" : "setup.records")}</h2>
+        <p>{t(step === 1 ? "setup.basicsHelp" : "setup.recordsHelp")}</p></div>}
       {business && <input type="hidden" name="id" value={business.id} />}
+      <div ref={firstPanel} hidden={guided && step !== 1}>
       <div className="form-grid">
         <label className="wide">
           {t("business.name")}
@@ -146,7 +175,11 @@ export function ProfileForm({ business }: { business?: Business }) {
             <option value="salon">{t("business.salon")}</option>
           </select>
         </label>
-        <label>
+      </div>
+      </div>
+      <div hidden={guided && step !== 2}>
+      <div className="form-grid">
+        <label className="wide">
           {t("business.vat")}
           <select name="vatMethod" defaultValue={p.vatMethod}>
             <option value="unknown">{t("business.unknown")}</option>
@@ -176,6 +209,12 @@ export function ProfileForm({ business }: { business?: Business }) {
         ))}
       </div>
       {business && <p className="help">{t("business.yearFixed")}</p>}
+      </div>
+      {guided && <div className="setup-controls">
+        {step === 1 ? <button type="button" className="button primary" onClick={next}>{t("setup.next")}</button>
+          : <button type="button" className="button secondary" onClick={() => setStep(1)}>{t("setup.back")}</button>}
+        <Link className="text-link" href="/">{t("common.cancel")}</Link>
+      </div>}
     </ActionForm>
   );
 }

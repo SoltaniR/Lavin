@@ -12,7 +12,7 @@ export async function UserGuide() {
           <span className="step-number">{index + 1}</span><div>
             <h2>{t(`guide.${step}.title`)}</h2><p>{t(`guide.${step}.text`)}</p>
             <p className="guide-tip">{t(`guide.${step}.tip`)}</p>
-            <Link className="text-link" href={`/?view=${step}`}>{t(`guide.${step}.action`)}</Link>
+            <Link className="text-link" href={`/?view=${step === "business" ? "setup" : step}`}>{t(`guide.${step}.action`)}</Link>
           </div>
         </li>)}
       </ol>

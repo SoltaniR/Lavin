@@ -18,7 +18,10 @@
     "review": "Bookkeeping",
     "yearend": "Year-end checks",
     "report": "Annual report",
-    "guide": "Getting started"
+    "guide": "Getting started",
+    "home": "Home",
+    "companies": "Saved reports",
+    "setup": "New report"
   },
   "common": {
     "save": "Save changes",
@@ -273,16 +276,16 @@
   },
   "guide": {
     "title": "Your first report, step by step",
-    "intro": "Start with your business details, then work through these five steps. You can return to any step from the menu.",
+    "intro": "From Home, choose Start a new report or Open an existing report. Then follow these five steps. Your saved records are kept until you choose to open them.",
     "quickTitle": "New to Lavin?",
     "quickText": "Follow the short guide from your first upload to a draft report.",
     "open": "Read the guide",
     "help": "What do I do on this page?",
     "business": {
       "title": "Set up your business",
-      "text": "Enter your business name and reporting year. Choose your activity and tick the things that apply, such as cash sales or equipment. Save your details.",
+      "text": "From Home, choose Start a new report. Enter the company name, year and activity, then select Next: your records. Choose the relevant features and select Create report and add documents. To revise a saved company, choose Edit company information on Home.",
       "tip": "Not sure about the VAT method? Choose “Not sure yet” and ask your accountant. The reporting year cannot be changed after creating this workspace.",
-      "action": "Open business details"
+      "action": "Start a new report"
     },
     "documents": {
       "title": "Upload your records",
@@ -319,5 +322,58 @@
     "payablesText": "Money you still owe suppliers.",
     "opening": "Opening balances",
     "openingText": "What the business owned and owed at the start of the year."
+  },
+  "home": {
+    "title": "What would you like to do?",
+    "subtitle": "Start a report, pick up where you left off, or update company information.",
+    "new": "Start a new report",
+    "newHelp": "Set up a company and reporting year. We will guide you through each step.",
+    "start": "Start with company details",
+    "existing": "Open an existing report",
+    "existingHelp": "Choose a saved company and year to continue working or check its figures.",
+    "edit": "Edit company information",
+    "editHelp": "Update a company’s name, activity or bookkeeping details.",
+    "sample": "Just looking? Try an example",
+    "sampleHelp": "Open a fictional salon to explore the app. Sample figures are kept in their own report."
+  },
+  "companies": {
+    "title": "Choose a report",
+    "subtitle": "Each report belongs to one company and one financial year.",
+    "editTitle": "Which company would you like to update?",
+    "editHelp": "Choose Edit details to revise company information. Choose Open report to change bookkeeping or supporting notes.",
+    "search": "Find a company or year",
+    "searchHint": "Company name or year",
+    "count": "{count, plural, one {# saved report} other {# saved reports}}",
+    "open": "Open report",
+    "edit": "Edit details",
+    "empty": "No saved reports yet",
+    "emptyHelp": "Start a new report to add your first company.",
+    "noMatch": "No matching reports",
+    "trySearch": "Try another name or year, or clear your search."
+  },
+  "setup": {
+    "title": "Start a new report",
+    "subtitle": "First, tell us which company and year this report is for. Your other reports stay separate.",
+    "part": "Company setup · {step} of 2",
+    "basics": "Which company is this for?",
+    "basicsHelp": "Enter a name and choose the year. The KvK number is optional.",
+    "records": "Tell us about your records",
+    "recordsHelp": "Tick only what applies. If you are unsure about VAT, leave “Not sure yet”. You can update these details later.",
+    "next": "Next: your records",
+    "back": "Back to company details",
+    "create": "Create report and add documents"
+  },
+  "flow": {
+    "label": "Report steps",
+    "position": "Step {step} of 5",
+    "business": "Company",
+    "documents": "Documents",
+    "review": "Bookkeeping",
+    "yearend": "Year-end checks",
+    "report": "Draft report",
+    "saveFirst": "Save your changes before moving on. You can return to any step.",
+    "next": "Next: {name}",
+    "back": "Previous step",
+    "return": "Back to saved reports"
   }
 }
