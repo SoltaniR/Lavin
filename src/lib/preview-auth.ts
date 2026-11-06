@@ -32,6 +32,19 @@ export function accessConfig(env: Record<string, string | undefined> = process.e
   return { hash, origin: origin.origin, secure: origin.protocol === "https:", local };
 }
 
+export function validRequestOrigin(
+  config: ReturnType<typeof accessConfig>, host: string, origin: string | null, requireOrigin = false,
+) {
+  const expected = new URL(config.origin);
+  // Local aliases must use the configured port. Never trust forwarded headers
+  // or allow these aliases for a hosted preview, even if a password is set.
+  const localAlias = config.local && ["localhost", "127.0.0.1"].includes(expected.hostname) &&
+    ["localhost", "127.0.0.1"].some(name => host === `${name}${expected.port ? `:${expected.port}` : ""}`);
+  if (host !== expected.host && !localAlias) return false;
+  const allowedOrigin = localAlias ? `${expected.protocol}//${host}` : config.origin;
+  return (!requireOrigin || Boolean(origin)) && (!origin || origin === allowedOrigin);
+}
+
 type State = { attempts: number[]; sessions: { hash: string; expires: number; credential: string }[] };
 // One Node process and persistent disk, matching the embedded database. Serialize
 // read/modify/write so concurrent logins cannot lose revocations or skip limits.

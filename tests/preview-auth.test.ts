@@ -3,7 +3,31 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { accessConfig, hashPassword, PreviewSessions, SESSION_SECONDS, verifyPassword } from "../src/lib/preview-auth";
+import { accessConfig, hashPassword, PreviewSessions, SESSION_SECONDS, verifyPassword, validRequestOrigin } from "../src/lib/preview-auth";
+
+test("password-protected local access accepts both loopback names with strict origin and port checks", () => {
+  const config = { hash: "configured", local: true, origin: "http://127.0.0.1:3000", secure: false };
+  for (const host of ["localhost:3000", "127.0.0.1:3000"]) {
+    assert.equal(validRequestOrigin(config, host, null), true);
+    assert.equal(validRequestOrigin(config, host, `http://${host}`, true), true);
+    assert.equal(validRequestOrigin(config, host, null, true), false);
+    assert.equal(validRequestOrigin(config, host, "https://untrusted.example", true), false);
+  }
+  for (const host of ["localhost:3001", "localhost.attacker.test:3000", "192.168.1.2:3000", "", "127.0.0.1:3000@attacker.test"]) {
+    assert.equal(validRequestOrigin(config, host, null), false);
+  }
+  assert.equal(validRequestOrigin(config, "localhost:3000", "http://127.0.0.1:3000", true), false);
+  assert.equal(validRequestOrigin({ ...config, origin: "http://localhost:3000" }, "127.0.0.1:3000", "http://127.0.0.1:3000", true), true);
+});
+
+test("hosted access never gains the local alias exception", () => {
+  const config = { hash: "configured", local: false, origin: "https://preview.example.com", secure: true };
+  assert.equal(validRequestOrigin(config, "preview.example.com", config.origin, true), true);
+  assert.equal(validRequestOrigin(config, "preview.example.com", "http://preview.example.com", true), false);
+  assert.equal(validRequestOrigin(config, "localhost:3000", "http://localhost:3000", true), false);
+  assert.equal(validRequestOrigin({ ...config, origin: "http://127.0.0.1:3000" }, "localhost:3000", null), false);
+  assert.equal(validRequestOrigin({ ...config, local: true }, "localhost:3000", null), false);
+});
 
 test("preview fails closed without credentials or with an unsafe origin", async () => {
   const hash = await hashPassword("test-only-preview-password");

@@ -1,7 +1,7 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
 import path from "node:path";
-import { accessConfig, COOKIE_NAME, PreviewSessions } from "../preview-auth";
+import { accessConfig, COOKIE_NAME, PreviewSessions, validRequestOrigin } from "../preview-auth";
 import { DomainError } from "../accounting";
 
 const shared = globalThis as unknown as { lavinSessions?: PreviewSessions };
@@ -14,15 +14,7 @@ export function configuration() {
 }
 export async function checkRequest(requireOrigin = false) {
   const config = configuration(), h = await headers();
-  const host = h.get("host") ?? "";
-  const expected = new URL(config.origin);
-  // Use the configured origin, never an untrusted forwarded host.
-  const localHost = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
-  if (host !== expected.host && !(config.local && localHost && !config.hash))
-    throw new DomainError("accessDenied");
-  const origin = h.get("origin");
-  const allowedOrigin = config.local && !config.hash ? `http://${host}` : config.origin;
-  if ((requireOrigin && !origin) || (origin && origin !== allowedOrigin))
+  if (!validRequestOrigin(config, h.get("host") ?? "", h.get("origin"), requireOrigin))
     throw new DomainError("accessDenied");
   return config;
 }
