@@ -6,6 +6,7 @@ export const profileSchema = z.object({
   kvk: z.string().regex(/^(\d{8})?$/),
   activity: z.enum(["services", "salon"]),
   vatMethod: z.enum(["invoice", "cash", "unknown"]),
+  vatScope: z.enum(["ordinaryQuarterly", "other", "unknown"]).default("unknown"),
   cash: z.boolean(),
   stock: z.boolean(),
   equipment: z.boolean(),
@@ -69,12 +70,20 @@ export type BankRow = {
   posted_entry: string | null;
 };
 export type Evidence = { requirement: string; note: string };
+export type VatReturn = {
+  quarter: number;
+  source_id: string;
+  filed_output: string;
+  filed_input: string;
+  note: string;
+};
 export type Workspace = {
   business: Business;
   documents: Document[];
   entries: Journal[];
   bankRows: BankRow[];
   evidence: Evidence[];
+  vatReturns: VatReturn[];
 };
 
 export const defaultProfile: Profile = {
@@ -83,6 +92,7 @@ export const defaultProfile: Profile = {
   kvk: "",
   activity: "services",
   vatMethod: "unknown",
+  vatScope: "unknown",
   cash: false,
   stock: false,
   equipment: false,

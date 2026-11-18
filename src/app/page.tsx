@@ -6,6 +6,7 @@ import { UserGuide, TaskHelp } from "@/components/user-guide";
 import { ReportHome } from "@/components/report-home";
 import { CompanyPicker } from "@/components/company-picker";
 import { ReportSteps, ReportNext } from "@/components/report-steps";
+import { VatReview } from "@/components/vat-review";
 import Decimal from "decimal.js";
 import { Suspense } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { businesses, workspace } from "@/lib/server/workspace";
 import { requirements } from "@/lib/model";
+import { quarterSchema } from "@/lib/vat";
 import { financials, readiness } from "@/lib/accounting";
 import { setLocale } from "./actions";
 import { Navigation } from "@/components/navigation";
@@ -44,7 +46,7 @@ export default async function Page({
   if (!allowed) redirect("/login");
   const protectedPreview = Boolean(configuration().hash);
   const params = await searchParams;
-  const views = ["home", "companies", "setup", "overview", "business", "documents", "review", "yearend", "report", "guide"];
+  const views = ["home", "companies", "setup", "overview", "business", "documents", "review", "vat", "yearend", "report", "guide"];
   const requested = params.view === "business" && params.new ? "setup" : params.view ?? "home";
   const view = views.includes(requested) ? requested : "home";
   const companyView = !["home", "companies", "setup", "guide"].includes(view);
@@ -289,13 +291,16 @@ export default async function Page({
               <div className="content-split">
                 <section className="panel">
                   <h2>{t("documents.upload")}</h2>
-                  <UploadForm />
+                  <UploadForm businessId={w.business.id} />
                   <p className="help">{t("documents.capability")}</p>
                 </section>
                 <aside className="side-note">
                   <FolderOpen size={30} />
                   <h3>{t("documents.count", { count: w.documents.length })}</h3>
                   <p>{t("documents.textNote")}</p>
+                  <h3>{t("documents.gather")}</h3>
+                  <p>{t("documents.gatherHelp")}</p>
+                  <Link className="text-link" href="/?view=vat">{t("nav.vat")}</Link>
                 </aside>
               </div>
               <div className="document-list">
@@ -349,7 +354,7 @@ export default async function Page({
                   <Plus size={18} />
                   <strong>{t("review.new")}</strong>
                 </summary>
-                <EntryForm profile={p!} documents={w.documents} />
+                <EntryForm businessId={w.business.id} profile={p!} documents={w.documents.map(({ id, name }) => ({ id, name }))} />
               </details>
               <section className="panel">
                 <div className="section-heading">
@@ -447,12 +452,15 @@ export default async function Page({
               </section>
             </>
           )}
+          {w && view === "vat" && (
+            <VatReview workspace={w} quarter={quarterSchema.safeParse(params.quarter).data ?? 1} locale={locale} />
+          )}
           {w && view === "yearend" && (
             <>
               {title("yearend")}
               <p className="notice">{t("yearend.notice")}</p>
               <div className="checklist">
-                {req.map((key, i) => {
+                {req.map(key => {
                   const evidence = w.evidence.find(
                     (e) => e.requirement === key,
                   );
@@ -472,7 +480,8 @@ export default async function Page({
                           {t(evidence ? "common.supplied" : "common.pending")}
                         </span>
                       </summary>
-                      <EvidenceForm requirement={key} note={evidence?.note} />
+                      {key === "vat" && <Link className="text-link" href="/?view=vat">{t("nav.vat")}</Link>}
+                      <EvidenceForm businessId={w.business.id} requirement={key} note={evidence?.note} />
                     </details>
                   );
                 })}
@@ -517,6 +526,7 @@ export default async function Page({
                   ).map((k) => (
                     <li key={k}>{t(`report.${k}`)}</li>
                   ))}
+                  <li><Link className="guide-link" href="/?view=vat">{t("report.vatReview")}</Link></li>
                 </ul>
               </aside>
               <Report

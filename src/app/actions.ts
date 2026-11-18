@@ -22,6 +22,7 @@ import {
   type EntryInput,
 } from "@/lib/accounting";
 import { parseMt940 } from "@/lib/documents/mt940";
+import { filedReturnSchema } from "@/lib/vat";
 
 export type ActionState = { error?: string; success?: boolean };
 async function run(work: () => Promise<void>): Promise<ActionState> {
@@ -99,7 +100,7 @@ export async function saveProfile(_: ActionState, form: FormData) {
 }
 export async function saveEntry(_: ActionState, form: FormData) {
   return run(async () => {
-    const b = await needBusiness(),
+    const b = await needBusiness(form),
       input = entrySchema.parse(Object.fromEntries(form));
     const lines = buildLines(input, b.profile.year);
     await (
@@ -118,7 +119,7 @@ export async function saveEntry(_: ActionState, form: FormData) {
 }
 export async function saveEvidence(_: ActionState, form: FormData) {
   return run(async () => {
-    const b = await needBusiness(),
+    const b = await needBusiness(form),
       requirement = z.string().parse(form.get("requirement"));
     if (!requirements(b.profile).includes(requirement))
       throw new DomainError("validation");
@@ -132,9 +133,25 @@ export async function saveEvidence(_: ActionState, form: FormData) {
     );
   });
 }
+export async function saveVatReturn(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form);
+    const filed = filedReturnSchema.parse(Object.fromEntries(form));
+    const saved = await (await db()).query(
+      `insert into vat_returns(business_id,quarter,source_id,filed_output,filed_input,note)
+       select business_id,$2::smallint,id,$4::bigint,$5::bigint,$6 from documents where business_id=$1 and id=$3 and kind='pdf'
+       on conflict(business_id,quarter) do update set
+         source_id=excluded.source_id,filed_output=excluded.filed_output,
+         filed_input=excluded.filed_input,note=excluded.note,updated_at=now()
+       returning quarter`,
+      [b.id, filed.quarter, filed.sourceId, filed.filedOutput, filed.filedInput, filed.note],
+    );
+    if (!saved.rows.length) throw new DomainError("vatSource");
+  });
+}
 export async function uploadDocument(_: ActionState, form: FormData) {
   return run(async () => {
-    const b = await needBusiness(),
+    const b = await needBusiness(form),
       file = form.get("file");
     if (!(file instanceof File) || !file.size || file.size > 20 * 1024 * 1024)
       throw new DomainError("fileSize");

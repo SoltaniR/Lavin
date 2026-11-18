@@ -9,6 +9,7 @@ import type {
   Journal,
   BankRow,
   Evidence,
+  VatReturn,
   Workspace,
 } from "../model";
 import { DomainError } from "../accounting";
@@ -22,20 +23,23 @@ export async function businesses() {
   ).rows;
 }
 export async function currentBusiness(): Promise<Business | null> {
-  const list = await businesses();
+  await requireAccess();
   const selected = (await cookies()).get("business")?.value;
-  return list.find((b) => b.id === selected) ?? null;
+  if (!z.string().uuid().safeParse(selected).success) return null;
+  const result = await (await db()).query<Business>("select * from businesses where id=$1", [selected]);
+  return result.rows[0] ?? null;
 }
-export async function needBusiness() {
+export async function needBusiness(form?: FormData) {
   const b = await currentBusiness();
   if (!b) throw new DomainError("business");
+  if (form && form.get("businessId") !== b.id) throw new DomainError("workspaceChanged");
   return b;
 }
 export async function workspace(): Promise<Workspace | null> {
   const business = await currentBusiness();
   if (!business) return null;
   const connection = await db();
-  const [documents, entries, bankRows, evidence] = await Promise.all([
+  const [documents, entries, bankRows, evidence, vatReturns] = await Promise.all([
     connection.query<Document>(
       "select id,name,kind,status,left(text_content,12000) as text_content,sha256,created_at::text from documents where business_id=$1 order by created_at desc",
       [business.id],
@@ -54,6 +58,10 @@ export async function workspace(): Promise<Workspace | null> {
       "select requirement,note from evidence where business_id=$1",
       [business.id],
     ),
+    connection.query<VatReturn>(
+      "select quarter,source_id,filed_output::text,filed_input::text,note from vat_returns where business_id=$1 order by quarter",
+      [business.id],
+    ),
   ]);
   return {
     business,
@@ -61,6 +69,7 @@ export async function workspace(): Promise<Workspace | null> {
     entries: entries.rows,
     bankRows: bankRows.rows,
     evidence: evidence.rows,
+    vatReturns: vatReturns.rows,
   };
 }
 export const uuid = (value: unknown) => z.string().uuid().parse(value);

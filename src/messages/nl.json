@@ -21,7 +21,8 @@
     "guide": "Aan de slag",
     "home": "Start",
     "companies": "Opgeslagen rapporten",
-    "setup": "Nieuw rapport"
+    "setup": "Nieuw rapport",
+    "vat": "Btw-controle"
   },
   "common": {
     "save": "Wijzigingen opslaan",
@@ -91,7 +92,7 @@
     "invoice": "Factuurstelsel",
     "cashMethod": "Kasstelsel",
     "unknown": "Nog niet zeker",
-    "vatHelp": "Bevestig het stelsel dat uw administratie gebruikt. Dit verandert niet de winstbepaling. Btw-aansluiting volgt in een latere fase.",
+    "vatHelp": "Kies het stelsel dat je gebruikt. De btw-controle vergelijkt factuurtotalen voor gewone binnenlandse kwartaalaangiften.",
     "features": "Wat geldt voor uw onderneming?",
     "cash": "Ik ontvang contante betalingen",
     "stock": "Ik houd producten of materialen op voorraad",
@@ -101,7 +102,12 @@
     "loans": "Ik heb een zakelijke lening",
     "firstYear": "Dit is mijn eerste boekjaar",
     "create": "Werkruimte aanmaken",
-    "yearFixed": "Het jaar van een bestaande werkruimte staat vast. Maak voor een ander jaar een nieuwe werkruimte."
+    "yearFixed": "Het jaar van een bestaande werkruimte staat vast. Maak voor een ander jaar een nieuwe werkruimte.",
+    "vatScope": "Welke btw-aangiften doe je?",
+    "vatScope_unknown": "Nog niet zeker",
+    "vatScope_ordinaryQuarterly": "Per kwartaal, gewone binnenlandse btw",
+    "vatScope_other": "Ander tijdvak, andere regeling of bijzonder geval",
+    "vatScopeHelp": "Kies Ander bij de KOR, vrijgestelde of buitenlandse omzet, verlegging, privégebruik of een gewijzigd stelsel. Kijk bij twijfel in je aangiftebrief."
   },
   "documents": {
     "title": "Je documenten",
@@ -121,7 +127,9 @@
     "noText": "Geen leesbare tekst gevonden. Bekijk het origineel en voer de bedragen handmatig in.",
     "view": "Origineel bekijken",
     "count": "{count} brondocumenten",
-    "sourceTitle": "Brondocument"
+    "sourceTitle": "Brondocument",
+    "gather": "Stukken voor dit boekjaar",
+    "gatherHelp": "Upload verkoop- en inkoopfacturen, bankafschriften en ingediende btw-aangiften. Bij Jaarafsluiting staat welke aanvullende stukken jouw bedrijf nodig heeft."
   },
   "review": {
     "title": "Boekhouding",
@@ -164,7 +172,7 @@
     "purchases": "Volledigheid van de inkopen",
     "purchasesHelp": "Bevestig dat leveranciersfacturen en zakelijke bonnen volledig zijn, inclusief privé betaalde kosten.",
     "vat": "Btw-aangiften en saldi",
-    "vatHelp": "Vermeld aangiftetijdvakken, correcties, betalingen en openstaande bedragen aan het jaareinde.",
+    "vatHelp": "Vergelijk de ingediende aangiften met je boekhouding. Licht verschillen, correcties, betalingen en openstaande btw aan het einde van het jaar toe.",
     "owner": "Privéstortingen en -opnamen",
     "ownerHelp": "Licht privétransacties toe en onderscheid ze van omzet en kosten.",
     "cutoff": "Openstaande posten aan het jaareinde",
@@ -195,7 +203,7 @@
     "evidence": "Vul de ontbrekende onderbouwing aan en laat deze controleren.",
     "bankRows": "Controleer de nog niet geboekte bankmutaties.",
     "vatMethod": "Bevestig het gebruikte btw-stelsel.",
-    "draftOnly": "Deze versie maakt alleen concepten. Btw-aansluiting, vergelijkende cijfers, volledige toelichtingen en formele beoordeling ontbreken nog.",
+    "draftOnly": "Rond de jaarafsluiting af en laat de cijfers controleren. Dit rapport is een concept.",
     "annual": "Financieel jaaroverzicht",
     "basis": "Conceptoverzicht voor een Nederlandse eenmanszaak, uitsluitend op basis van vastgelegde boekingen. Dit is geen ingediende belastingaangifte of accountantsverklaring.",
     "profitLoss": "Winst-en-verliesrekening",
@@ -209,7 +217,8 @@
     "empty": "Voeg een boeking toe om dit rapport te vullen.",
     "prepared": "Opgesteld op",
     "scope": "Concept · EUR · zonder vergelijkende cijfers",
-    "reportNote": "Ontbrekende boekingen, btw-tijdstipcorrecties en onvolledige onderbouwing kunnen deze cijfers veranderen. Controleer het journaal voordat u dit overzicht gebruikt."
+    "reportNote": "Ontbrekende boekingen, btw-tijdstipcorrecties en onvolledige onderbouwing kunnen deze cijfers veranderen. Controleer het journaal voordat u dit overzicht gebruikt.",
+    "vatReview": "Controleer de btw-aansluiting en verklaar eventuele verschillen."
   },
   "account": {
     "bank": "Bank",
@@ -259,7 +268,9 @@
     "loginLimited": "Te veel inlogpogingen. Wacht vijf minuten en probeer het opnieuw.",
     "accessDenied": "De toegang kon niet worden gecontroleerd. Open het oorspronkelijke uitnodigingsadres en probeer het opnieuw.",
     "accessConfig": "Deze preview is nog niet ingesteld. Neem contact op met degene die je heeft uitgenodigd.",
-    "sessionExpired": "Je sessie is verlopen. Vernieuw deze pagina en log opnieuw in."
+    "sessionExpired": "Je sessie is verlopen. Vernieuw deze pagina en log opnieuw in.",
+    "workspaceChanged": "Het geselecteerde bedrijf is gewijzigd in een ander tabblad. Open het juiste bedrijf opnieuw voordat je opslaat.",
+    "vatSource": "Kies een aangifte-pdf die bij dit bedrijf is geüpload."
   },
   "auth": {
     "title": "Welkom bij Lavin",
@@ -375,5 +386,40 @@
     "next": "Verder: {name}",
     "back": "Vorige stap",
     "return": "Terug naar opgeslagen rapporten"
+  },
+  "vat": {
+    "title": "Btw-controle per kwartaal",
+    "subtitle": "Vergelijk de geboekte factuur-btw met de bedragen uit de oorspronkelijke ingediende aangifte.",
+    "periods": "Kies een kwartaal",
+    "period": "K{quarter} {year}",
+    "comparison": "Boekhouding en ingediende aangifte",
+    "journal": "Geboekte factuur-btw",
+    "filed": "Aangegeven bedrag",
+    "difference": "Geboekt min aangegeven",
+    "output": "5a · Verschuldigde btw",
+    "input": "5b · Voorbelasting",
+    "rounding": "In de boekhouding staan centen, in de aangifte hele euro’s. Controleer elk verschil aan de hand van het origineel, ook afrondingsverschillen.",
+    "scopeHelp": "De vergelijking is beschikbaar voor gewone binnenlandse kwartaalaangiften volgens het factuurstelsel. Het kasstelsel, andere tijdvakken en bijzondere gevallen vragen om aparte controle.",
+    "noInvoices": "Er zijn geen facturen meegenomen voor dit kwartaal. Controleer of het een nihilaangifte was of dat er gegevens ontbreken.",
+    "missingInvoices": "{count, plural, one {Aan # factuur is geen pdf gekoppeld.} other {Aan # facturen is geen pdf gekoppeld.}}",
+    "otherEntries": "{count, plural, one {Controleer # boeking buiten de standaard factuurberekening.} other {Controleer # boekingen buiten de standaard factuurberekening.}}",
+    "unposted": "{count, plural, one {# bankmutatie is nog niet geboekt.} other {# bankmutaties zijn nog niet geboekt.}}",
+    "invoiceList": "Toon onderliggende boekingen ({count})",
+    "original": "Neem bedragen uit de ingediende aangifte over",
+    "captureHelp": "Kies de oorspronkelijke ingediende pdf voor dit bedrijf en kwartaal. Neem 5a en 5b over in hele euro’s, inclusief een eventueel minteken. Controleer het juiste tijdvak en de aftrekbaarheid. Upload correcties apart en licht ze toe.",
+    "viewOriginal": "Bekijk de gekoppelde aangifte-pdf",
+    "uploadFirst": "Upload de aangifte-pdf bij Documenten",
+    "source": "Pdf van de ingediende btw-aangifte",
+    "chooseSource": "Kies de originele pdf",
+    "note": "Toelichting op verschillen of correcties (optioneel)",
+    "save": "Aangegeven bedragen opslaan",
+    "official": "Toelichting btw-aangifte {year} van de Belastingdienst",
+    "status": {
+      "scopeReview": "Controleer de btw-instellingen",
+      "missingReturn": "Voeg de aangifte toe",
+      "differenceFound": "Verschil te verklaren",
+      "needsReview": "Stukken te controleren",
+      "totalsAgree": "Geboekte bedragen sluiten aan"
+    }
   }
 }

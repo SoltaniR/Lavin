@@ -12,6 +12,7 @@ import {
   CircleHelp,
   House,
   Plus,
+  ReceiptText,
 } from "lucide-react";
 const items = [
   ["home", House],
@@ -21,6 +22,7 @@ const items = [
   ["business", Building2],
   ["documents", Files],
   ["review", BookOpen],
+  ["vat", ReceiptText],
   ["yearend", ListChecks],
   ["report", FileChartColumn],
   ["guide", CircleHelp],

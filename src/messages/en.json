@@ -21,7 +21,8 @@
     "guide": "Getting started",
     "home": "Home",
     "companies": "Saved reports",
-    "setup": "New report"
+    "setup": "New report",
+    "vat": "VAT check"
   },
   "common": {
     "save": "Save changes",
@@ -91,7 +92,7 @@
     "invoice": "Invoice method",
     "cashMethod": "Cash method",
     "unknown": "Not sure yet",
-    "vatHelp": "Confirm the method used in your records. This does not change how annual profit is recognized. VAT reconciliation is a later milestone.",
+    "vatHelp": "Set the method you actually use. The VAT check compares invoice totals for ordinary domestic quarterly returns.",
     "features": "Which apply to your business?",
     "cash": "I accept cash payments",
     "stock": "I hold products or materials in stock",
@@ -101,7 +102,12 @@
     "loans": "I have a business loan",
     "firstYear": "This is my first financial year",
     "create": "Create workspace",
-    "yearFixed": "The year is fixed for an existing workspace. Create a new workspace for another year."
+    "yearFixed": "The year is fixed for an existing workspace. Create a new workspace for another year.",
+    "vatScope": "Which VAT returns do you file?",
+    "vatScope_unknown": "Not sure yet",
+    "vatScope_ordinaryQuarterly": "Quarterly, ordinary domestic VAT",
+    "vatScope_other": "Other period, scheme or special case",
+    "vatScopeHelp": "Choose Other for KOR, exempt or cross-border sales, reverse charge, private-use adjustments or changed methods. Check your Belastingdienst letter if unsure."
   },
   "documents": {
     "title": "Your documents",
@@ -121,7 +127,9 @@
     "noText": "No readable text was found. Review the original and enter the figures manually.",
     "view": "View original",
     "count": "{count} source documents",
-    "sourceTitle": "Source document"
+    "sourceTitle": "Source document",
+    "gather": "Records to collect for this year",
+    "gatherHelp": "Upload sales and purchase invoices, bank statements and your filed VAT returns. Check Year-end checks for additional evidence based on your business details."
   },
   "review": {
     "title": "Bookkeeping",
@@ -164,7 +172,7 @@
     "purchases": "Purchase completeness",
     "purchasesHelp": "Confirm supplier invoices and business receipts are complete, including personally paid costs.",
     "vat": "VAT submissions and balances",
-    "vatHelp": "List submitted periods, corrections, payments and year-end outstanding amounts.",
+    "vatHelp": "Compare your filed returns with the books. Use a note to explain differences, corrections, payments and any VAT still outstanding at year end.",
     "owner": "Owner contributions and drawings",
     "ownerHelp": "Explain private transfers and distinguish them from revenue and expenses.",
     "cutoff": "Year-end outstanding items",
@@ -195,7 +203,7 @@
     "evidence": "Complete the outstanding evidence notes and have them reviewed.",
     "bankRows": "Review the unposted bank movements.",
     "vatMethod": "Confirm the VAT accounting method.",
-    "draftOnly": "This milestone produces drafts only. VAT reconciliation, comparatives, full notes and formal review are still pending.",
+    "draftOnly": "Complete the year-end checks and have the figures reviewed. This report is a draft.",
     "annual": "Annual financial overview",
     "basis": "Draft management overview for a Dutch sole proprietor, based solely on recorded entries. It is not a filed tax return or an accountant’s assurance statement.",
     "profitLoss": "Profit and loss",
@@ -209,7 +217,8 @@
     "empty": "Record an entry to populate this report.",
     "prepared": "Prepared on",
     "scope": "Draft · EUR · no prior-year comparison",
-    "reportNote": "Unrecorded items, VAT timing adjustments and incomplete evidence can change these figures. Review the underlying journal before relying on this overview."
+    "reportNote": "Unrecorded items, VAT timing adjustments and incomplete evidence can change these figures. Review the underlying journal before relying on this overview.",
+    "vatReview": "Review the VAT comparison and explain any differences."
   },
   "account": {
     "bank": "Bank",
@@ -259,7 +268,9 @@
     "loginLimited": "Too many sign-in attempts. Please wait five minutes and try again.",
     "accessDenied": "Access could not be verified. Open the original invitation address and try again.",
     "accessConfig": "This preview is not configured yet. Please contact the person who invited you.",
-    "sessionExpired": "Your session has ended. Refresh this page and sign in again."
+    "sessionExpired": "Your session has ended. Refresh this page and sign in again.",
+    "workspaceChanged": "The selected company changed in another tab. Reopen the intended company before saving.",
+    "vatSource": "Choose a return PDF uploaded to this company."
   },
   "auth": {
     "title": "Welcome to Lavin",
@@ -375,5 +386,40 @@
     "next": "Next: {name}",
     "back": "Previous step",
     "return": "Back to saved reports"
+  },
+  "vat": {
+    "title": "Quarterly VAT check",
+    "subtitle": "Compare VAT recorded on invoices with the figures from an original filed return.",
+    "periods": "Choose a quarter",
+    "period": "Q{quarter} {year}",
+    "comparison": "Journal and filed return",
+    "journal": "Booked invoice VAT",
+    "filed": "Filed amount",
+    "difference": "Booked minus filed",
+    "output": "5a · VAT due",
+    "input": "5b · Input VAT",
+    "rounding": "The journal keeps cents and the filed return uses whole euros. Check each difference against the original, including differences from rounding.",
+    "scopeHelp": "The difference is available for ordinary quarterly domestic VAT under the invoice method. Cash accounting, other periods and special cases need a separate review.",
+    "noInvoices": "There are no included invoices for this quarter. Confirm whether this was a nil period or whether records are missing.",
+    "missingInvoices": "{count, plural, one {# invoice has no linked PDF.} other {# invoices have no linked PDF.}}",
+    "otherEntries": "{count, plural, one {# journal entry outside the standard invoice calculation needs review.} other {# journal entries outside the standard invoice calculation need review.}}",
+    "unposted": "{count, plural, one {# bank movement is still unposted.} other {# bank movements are still unposted.}}",
+    "invoiceList": "Show source entries ({count})",
+    "original": "Copy figures from the filed return",
+    "captureHelp": "Select the original filed PDF for this company and quarter and copy 5a and 5b as signed whole euros. Confirm invoice timing and deductible VAT against your records. Upload corrections separately and explain them in the note.",
+    "viewOriginal": "View the linked return PDF",
+    "uploadFirst": "Upload the return PDF in Documents",
+    "source": "Filed VAT return PDF",
+    "chooseSource": "Choose the original PDF",
+    "note": "Explanation of differences or corrections (optional)",
+    "save": "Save filed figures",
+    "official": "Belastingdienst VAT return guide for {year}",
+    "status": {
+      "scopeReview": "VAT setup needs review",
+      "missingReturn": "Add the filed return",
+      "differenceFound": "Difference to explain",
+      "needsReview": "Evidence to check",
+      "totalsAgree": "Recorded amounts agree"
+    }
   }
 }

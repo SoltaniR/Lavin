@@ -5,6 +5,9 @@ import { accounts, type Journal, type Line, type Profile } from "./model";
 export class DomainError extends Error {}
 export const moneySchema = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
 const knownAccounts = new Set(accounts.map((a) => a.code));
+export const purchaseAccounts = accounts.filter((a) =>
+  a.kind === "expense" || ["inventory", "equipment", "deposit", "prepayments"].includes(a.code),
+);
 export const entrySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   description: z.string().trim().min(3).max(240),
@@ -44,13 +47,7 @@ export function buildLines(input: EntryInput, year: number): Line[] {
     lines = [line("receivables", total, 0), line("sales", 0, total.minus(vat))];
     if (!vat.isZero()) lines.push(line("vatOutput", 0, vat));
   } else if (input.kind === "purchase") {
-    if (
-      !accounts.some(
-        (a) =>
-          a.code === input.debit &&
-          (a.kind === "expense" || a.kind === "asset"),
-      )
-    )
+    if (!purchaseAccounts.some((a) => a.code === input.debit))
       throw new DomainError("account");
     lines = [
       line(input.debit, total.minus(vat), 0),

@@ -26,6 +26,7 @@ import {
   type Profile,
   type BankRow,
 } from "@/lib/model";
+import { purchaseAccounts } from "@/lib/accounting";
 
 type Action = (state: ActionState, form: FormData) => Promise<ActionState>;
 export function ActionForm({
@@ -187,6 +188,15 @@ export function ProfileForm({ business, guided = false }: { business?: Business;
             <option value="cash">{t("business.cashMethod")}</option>
           </select>
         </label>
+        <label className="wide">
+          {t("business.vatScope")}
+          <select name="vatScope" defaultValue={p.vatScope ?? "unknown"}>
+            {(["unknown", "ordinaryQuarterly", "other"] as const).map(scope => (
+              <option key={scope} value={scope}>{t(`business.vatScope_${scope}`)}</option>
+            ))}
+          </select>
+          <span className="help">{t("business.vatScopeHelp")}</span>
+        </label>
       </div>
       <p className="help">{t("business.vatHelp")}</p>
       <h3>{t("business.features")}</h3>
@@ -239,17 +249,20 @@ function AccountSelect({
   );
 }
 export function EntryForm({
+  businessId,
   profile,
   documents,
 }: {
+  businessId: string;
   profile: Profile;
-  documents: Document[];
+  documents: Pick<Document, "id" | "name">[];
 }) {
   const t = useTranslations(),
     [kind, setKind] = useState("sale");
   const invoice = ["sale", "purchase"].includes(kind);
   return (
     <ActionForm action={saveEntry} label={t("review.post")}>
+      <input type="hidden" name="businessId" value={businessId} />
       <div className="form-grid">
         <label>
           {t("review.kind")}
@@ -312,7 +325,7 @@ export function EntryForm({
             <AccountSelect
               name="debit"
               initial="otherCosts"
-              filter={(a) => ["expense", "asset"].includes(a.kind)}
+              filter={(a) => purchaseAccounts.includes(a)}
             />
           </label>
         )}
@@ -363,10 +376,11 @@ export function EntryForm({
     </ActionForm>
   );
 }
-export function UploadForm() {
+export function UploadForm({ businessId }: { businessId: string }) {
   const t = useTranslations();
   return (
     <ActionForm action={uploadDocument} label={t("documents.submit")} reset nextHref="/?view=review">
+      <input type="hidden" name="businessId" value={businessId} />
       <label className="upload-zone">
         <UploadCloud size={30} />
         <strong>{t("documents.choose")}</strong>
@@ -383,15 +397,18 @@ export function UploadForm() {
   );
 }
 export function EvidenceForm({
+  businessId,
   requirement,
   note,
 }: {
+  businessId: string;
   requirement: string;
   note?: string;
 }) {
   const t = useTranslations();
   return (
     <ActionForm action={saveEvidence} label={t("yearend.save")}>
+      <input type="hidden" name="businessId" value={businessId} />
       <input type="hidden" name="requirement" value={requirement} />
       <label>
         {t("common.notes")}

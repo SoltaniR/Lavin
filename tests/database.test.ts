@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import { accounts, defaultProfile } from "../src/lib/model";
 
-test("PostgreSQL posting boundary: atomicity, idempotency and evidence ownership", async () => {
+test("PostgreSQL guards ledger postings and VAT return evidence by company", async () => {
   const db = new PGlite();
   try {
     await db.exec(
@@ -74,6 +74,17 @@ test("PostgreSQL posting boundary: atomicity, idempotency and evidence ownership
       { account: "capital", debit: "0", credit: "100.001" },
     ];
     await assert.rejects(post(invalid, randomUUID()), /amount/);
+    const vatMigration = await readFile(new URL("../supabase/migrations/0002_vat_returns.sql", import.meta.url), "utf8");
+    await db.exec(vatMigration);
+    await db.exec(vatMigration);
+    const fileReturn = (company: string, quarter: number) => db.query(
+      "insert into vat_returns(business_id,quarter,source_id,filed_output,filed_input) values($1,$2,$3,21,0)",
+      [company, quarter, doc],
+    );
+    await assert.rejects(fileReturn(business, 1), /foreign key/);
+    await assert.rejects(fileReturn(other, 5), /check constraint/);
+    await fileReturn(other, 1);
+    await assert.rejects(fileReturn(other, 1), /duplicate key/);
   } finally {
     await db.close();
   }

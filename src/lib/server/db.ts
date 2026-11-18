@@ -12,12 +12,8 @@ export function db() {
   globalDb.lavinDb ??= (async () => {
     await mkdir(dataDir, { recursive: true });
     const connection = new PGlite(path.join(dataDir, "postgres"));
-    await connection.exec(
-      await readFile(
-        path.join(process.cwd(), "supabase/migrations/0001_core.sql"),
-        "utf8",
-      ),
-    );
+    for (const file of ["0001_core.sql", "0002_vat_returns.sql"])
+      await connection.exec(await readFile(path.join(process.cwd(), "supabase/migrations", file), "utf8"));
     for (const a of accounts)
       await connection.query(
         "insert into accounts(code,kind) values($1,$2) on conflict do nothing",

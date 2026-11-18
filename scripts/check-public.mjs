@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 
 const files = execFileSync("git", ["ls-files", "--cached", "-z"], { encoding: "utf8" }).split("\0").filter(Boolean);
-const forbidden = file => /(^|\/)(\.private|\.data|docs|documentation|output|\.playwright-cli|node_modules|\.next)(\/|$)/i.test(file) ||
+const forbidden = file => /(^|\/)(\.private|\.agents|\.data|docs|documentation|output|\.playwright-cli|node_modules|\.next)(\/|$)/i.test(file) ||
+  file === "skills-lock.json" ||
   /\.(md|mdx|rst|pdf|docx?|pem|key|p12|pfx|log)$/i.test(file) ||
   /(^|\/)\.env/.test(file) && file !== ".env.example";
 const history = execFileSync("git", ["log", "--all", "--format=", "--name-only", "--diff-filter=A"], { encoding: "utf8" }).split(/\r?\n/).filter(Boolean);

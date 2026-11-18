@@ -54,6 +54,15 @@
   box-sizing: border-box;
 }
 [hidden] { display: none !important; }
+.vat-periods { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+.vat-panel { margin-bottom: 20px; }
+.vat-panel th[scope="row"] { text-transform: none; letter-spacing: normal; }
+.vat-issues:empty { display: none; }
+.vat-issues li, .vat-invoices li { margin-block: 5px; }
+.vat-invoices { overflow-wrap: anywhere; }
+.vat-invoices .text-link { margin-inline-start: 12px; }
+.vat-panel .notice { margin-bottom: 14px; }
+.vat-panel .form-grid + .button { margin-top: 16px; }
 .report-home { max-width: 900px; }
 .home-choices { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: white; }
 .home-choice { display: flex; align-items: center; gap: 24px; padding: 28px; border-bottom: 1px solid var(--line); }

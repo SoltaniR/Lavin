@@ -9,6 +9,8 @@ output/
 test-results/
 .playwright-cli/
 .private/
+.agents/
+/skills-lock.json
 docs/
 documentation/
 *.md
