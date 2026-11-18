@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { requireAccess } from "./access";
 import { z } from "zod";
+import type { Transaction } from "@electric-sql/pglite";
 import { db } from "./db";
 import type {
   Business,
@@ -14,20 +15,36 @@ import type {
 } from "../model";
 import { DomainError } from "../accounting";
 
-export async function businesses() {
+export type SavedReport = Business & { trashed_at: string | null };
+
+export async function businesses(trashed = false) {
   await requireAccess();
-  return (
-    await (
-      await db()
-    ).query<Business>("select * from businesses order by created_at")
-  ).rows;
+  const result = await (await db()).query<SavedReport>(
+    `select id,profile,created_at::text,trashed_at::text from businesses
+     where (trashed_at is not null) = $1 order by trashed_at desc nulls last, created_at desc, id`,
+    [trashed],
+  );
+  return result.rows;
 }
 export async function currentBusiness(): Promise<Business | null> {
   await requireAccess();
   const selected = (await cookies()).get("business")?.value;
   if (!z.string().uuid().safeParse(selected).success) return null;
-  const result = await (await db()).query<Business>("select * from businesses where id=$1", [selected]);
+  const result = await (await db()).query<Business>(
+    "select id,profile,created_at from businesses where id=$1 and trashed_at is null",
+    [selected],
+  );
   return result.rows[0] ?? null;
+}
+
+export async function writeActiveReport<T>(id: string, work: (tx: Transaction) => Promise<T>) {
+  return (await db()).transaction(async tx => {
+    // The same row is updated by Trash and Restore. A save either completes
+    // before the report moves to Trash or sees that it is no longer active.
+    const active = await tx.query("select id from businesses where id=$1 and trashed_at is null for update", [id]);
+    if (!active.rows.length) throw new DomainError("reportUnavailable");
+    return work(tx);
+  });
 }
 export async function needBusiness(form?: FormData) {
   const b = await currentBusiness();

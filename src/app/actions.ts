@@ -7,7 +7,7 @@ import path from "node:path";
 import Decimal from "decimal.js";
 import { z } from "zod";
 import { db, dataDir } from "@/lib/server/db";
-import { needBusiness, uuid } from "@/lib/server/workspace";
+import { needBusiness, uuid, writeActiveReport } from "@/lib/server/workspace";
 import { requireAccess } from "@/lib/server/access";
 import {
   profileSchema,
@@ -25,6 +25,9 @@ import { parseMt940 } from "@/lib/documents/mt940";
 import { filedReturnSchema } from "@/lib/vat";
 
 export type ActionState = { error?: string; success?: boolean };
+export type ReportTrashState = ActionState & {
+  changed?: { id: string; name: string; year: number; trashed: boolean };
+};
 async function run(work: () => Promise<void>): Promise<ActionState> {
   try {
     await requireAccess();
@@ -51,12 +54,30 @@ export async function setLocale(form: FormData) {
 export async function selectBusiness(_: ActionState, form: FormData) {
   return run(async () => {
     const id = uuid(form.get("business"));
-    if (!(await (await db()).query("select id from businesses where id=$1", [id])).rows.length)
-      throw new DomainError("business");
+    if (!(await (await db()).query("select id from businesses where id=$1 and trashed_at is null", [id])).rows.length)
+      throw new DomainError("reportUnavailable");
     (await cookies()).set("business", id, {
       httpOnly: true, sameSite: "strict", path: "/",
     });
   });
+}
+export async function setReportTrash(_: ReportTrashState, form: FormData): Promise<ReportTrashState> {
+  let changed: ReportTrashState["changed"];
+  const result = await run(async () => {
+    const id = uuid(form.get("business"));
+    const trashed = z.enum(["trash", "restore"]).parse(form.get("intent")) === "trash";
+    const updated = await (await db()).query<{ profile: Profile }>(
+      `update businesses set trashed_at = case when $2::boolean then now() else null end
+       where id=$1 and (trashed_at is null) = $2 returning profile`,
+      [id, trashed],
+    );
+    const profile = updated.rows[0]?.profile;
+    if (!profile) throw new DomainError("reportUnavailable");
+    const jar = await cookies();
+    if (trashed && jar.get("business")?.value === id) jar.delete("business");
+    changed = { id, name: profile.name, year: profile.year, trashed };
+  });
+  return { ...result, changed };
 }
 export async function saveProfile(_: ActionState, form: FormData) {
   return run(async () => {
@@ -80,10 +101,10 @@ export async function saveProfile(_: ActionState, form: FormData) {
       const business = await needBusiness();
       if (business.id !== existing) throw new DomainError("business");
       if (profile.year !== business.profile.year) throw new DomainError("year");
-      await connection.query("update businesses set profile=$1 where id=$2", [
+      await writeActiveReport(business.id, tx => tx.query("update businesses set profile=$1 where id=$2", [
         JSON.stringify(profile),
         business.id,
-      ]);
+      ]));
     } else {
       const id = randomUUID();
       await connection.query(
@@ -103,9 +124,7 @@ export async function saveEntry(_: ActionState, form: FormData) {
     const b = await needBusiness(form),
       input = entrySchema.parse(Object.fromEntries(form));
     const lines = buildLines(input, b.profile.year);
-    await (
-      await db()
-    ).query("select post_entry($1,$2,$3,$4,$5,$6,$7,$8)", [
+    await writeActiveReport(b.id, tx => tx.query("select post_entry($1,$2,$3,$4,$5,$6,$7,$8)", [
       randomUUID(),
       b.id,
       input.date,
@@ -114,7 +133,7 @@ export async function saveEntry(_: ActionState, form: FormData) {
       input.requestKey,
       input.sourceId || null,
       JSON.stringify(lines),
-    ]);
+    ]));
   });
 }
 export async function saveEvidence(_: ActionState, form: FormData) {
@@ -124,20 +143,18 @@ export async function saveEvidence(_: ActionState, form: FormData) {
     if (!requirements(b.profile).includes(requirement))
       throw new DomainError("validation");
     const note = z.string().trim().min(5).max(2000).parse(form.get("note"));
-    await (
-      await db()
-    ).query(
+    await writeActiveReport(b.id, tx => tx.query(
       `insert into evidence(business_id,requirement,note) values($1,$2,$3)
       on conflict(business_id,requirement) do update set note=$3,updated_at=now()`,
       [b.id, requirement, note],
-    );
+    ));
   });
 }
 export async function saveVatReturn(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form);
     const filed = filedReturnSchema.parse(Object.fromEntries(form));
-    const saved = await (await db()).query(
+    const saved = await writeActiveReport(b.id, tx => tx.query(
       `insert into vat_returns(business_id,quarter,source_id,filed_output,filed_input,note)
        select business_id,$2::smallint,id,$4::bigint,$5::bigint,$6 from documents where business_id=$1 and id=$3 and kind='pdf'
        on conflict(business_id,quarter) do update set
@@ -145,7 +162,7 @@ export async function saveVatReturn(_: ActionState, form: FormData) {
          filed_input=excluded.filed_input,note=excluded.note,updated_at=now()
        returning quarter`,
       [b.id, filed.quarter, filed.sourceId, filed.filedOutput, filed.filedInput, filed.note],
-    );
+    ));
     if (!saved.rows.length) throw new DomainError("vatSource");
   });
 }
@@ -205,12 +222,9 @@ export async function uploadDocument(_: ActionState, form: FormData) {
     await mkdir(uploadDir, { recursive: true });
     await writeFile(path.join(uploadDir, id), bytes, { flag: "wx" });
     try {
-      await connection.transaction(async (tx) => {
+      await writeActiveReport(b.id, async tx => {
         // Serialize imports for this business so concurrent requests cannot bypass
         // duplicate/overlap checks. Exact equal payments within one file are retained.
-        await tx.query("select id from businesses where id=$1 for update", [
-          b.id,
-        ]);
         if (
           (
             await tx.query(
@@ -277,8 +291,7 @@ export async function postBankRow(_: ActionState, form: FormData) {
       id = uuid(form.get("rowId")),
       counterpart = z.string().parse(form.get("account"));
     if (counterpart === "bank") throw new DomainError("account");
-    const connection = await db();
-    await connection.transaction(async (tx) => {
+    await writeActiveReport(b.id, async tx => {
       const row = (
         await tx.query<{
           booking_date: string;

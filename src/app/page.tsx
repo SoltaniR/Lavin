@@ -50,11 +50,12 @@ export default async function Page({
   const requested = params.view === "business" && params.new ? "setup" : params.view ?? "home";
   const view = views.includes(requested) ? requested : "home";
   const companyView = !["home", "companies", "setup", "guide"].includes(view);
+  const trashed = view === "companies" && params.trash === "1";
   const [t, locale, w, list] = await Promise.all([
     getTranslations(),
     getLocale(),
     companyView ? workspace() : Promise.resolve(null),
-    view === "companies" ? businesses() : Promise.resolve([]),
+    view === "companies" ? businesses(trashed) : Promise.resolve([]),
   ]);
   if (companyView && !w) redirect("/?view=companies");
   const p = w?.business.profile;
@@ -145,7 +146,7 @@ export default async function Page({
         </header>
         <main id="main">
           {view === "home" && <ReportHome />}
-          {view === "companies" && <CompanyPicker businesses={list} editing={params.mode === "edit"} />}
+          {view === "companies" && <CompanyPicker key={trashed ? "trash" : "saved"} businesses={list} editing={params.mode === "edit"} trashed={trashed} />}
           {(w || view === "setup") && <ReportSteps view={view} ready={Boolean(w)} />}
           {view === "setup" && <div className="setup-layout"><header className="page-heading"><h1>{t("setup.title")}</h1><p>{t("setup.subtitle")}</p></header>
             <section className="panel setup-panel"><ProfileForm guided /></section></div>}

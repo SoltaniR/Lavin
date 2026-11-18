@@ -270,7 +270,8 @@
     "accessConfig": "This preview is not configured yet. Please contact the person who invited you.",
     "sessionExpired": "Your session has ended. Refresh this page and sign in again.",
     "workspaceChanged": "The selected company changed in another tab. Reopen the intended company before saving.",
-    "vatSource": "Choose a return PDF uploaded to this company."
+    "vatSource": "Choose a return PDF uploaded to this company.",
+    "reportUnavailable": "This report is no longer available here. Check Saved reports or Trash."
   },
   "auth": {
     "title": "Welcome to Lavin",
@@ -360,7 +361,30 @@
     "empty": "No saved reports yet",
     "emptyHelp": "Start a new report to add your first company.",
     "noMatch": "No matching reports",
-    "trySearch": "Try another name or year, or clear your search."
+    "trySearch": "Try another name or year, or clear your filters.",
+    "filterYear": "Filter by year",
+    "allYears": "All years",
+    "sort": "Sort by",
+    "newest": "Newest first",
+    "recentlyDeleted": "Recently deleted",
+    "nameOrder": "Company name",
+    "yearOrder": "Latest financial year",
+    "clearFilters": "Clear filters",
+    "figures": "View figures",
+    "trash": "Trash",
+    "trashHelp": "Restore a report to bring it back to Saved reports.",
+    "trashCount": "{count, plural, one {# report in Trash} other {# reports in Trash}}",
+    "emptyTrash": "Trash is empty",
+    "emptyTrashHelp": "Reports you delete will appear here.",
+    "delete": "Delete",
+    "moveToTrash": "Move to Trash",
+    "confirmTitle": "Delete {name} ({year})?",
+    "confirmHelp": "This removes the report from Saved reports. You can restore it from Trash with its entries and documents.",
+    "trashedNotice": "{name} ({year}) moved to Trash.",
+    "restoredNotice": "{name} ({year}) restored to Saved reports.",
+    "restore": "Restore report",
+    "undo": "Undo",
+    "backToSaved": "Back to saved reports"
   },
   "setup": {
     "title": "Start a new report",

@@ -85,6 +85,12 @@ test("PostgreSQL guards ledger postings and VAT return evidence by company", asy
     await assert.rejects(fileReturn(other, 5), /check constraint/);
     await fileReturn(other, 1);
     await assert.rejects(fileReturn(other, 1), /duplicate key/);
+    const trashMigration = await readFile(new URL("../supabase/migrations/0003_report_trash.sql", import.meta.url), "utf8");
+    await db.exec(trashMigration);
+    await db.exec(trashMigration);
+    const active = await db.query("select id from businesses where trashed_at is null");
+    assert.equal(active.rows.length, 2);
+    assert.equal((await db.query("select source_id from vat_returns where source_id=$1", [doc])).rows.length, 1);
   } finally {
     await db.close();
   }

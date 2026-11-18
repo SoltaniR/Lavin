@@ -270,7 +270,8 @@
     "accessConfig": "Deze preview is nog niet ingesteld. Neem contact op met degene die je heeft uitgenodigd.",
     "sessionExpired": "Je sessie is verlopen. Vernieuw deze pagina en log opnieuw in.",
     "workspaceChanged": "Het geselecteerde bedrijf is gewijzigd in een ander tabblad. Open het juiste bedrijf opnieuw voordat je opslaat.",
-    "vatSource": "Kies een aangifte-pdf die bij dit bedrijf is geüpload."
+    "vatSource": "Kies een aangifte-pdf die bij dit bedrijf is geüpload.",
+    "reportUnavailable": "Dit rapport is hier niet meer beschikbaar. Kijk bij Opgeslagen rapporten of in de Prullenbak."
   },
   "auth": {
     "title": "Welkom bij Lavin",
@@ -360,7 +361,30 @@
     "empty": "Nog geen opgeslagen rapporten",
     "emptyHelp": "Start een nieuw rapport om je eerste bedrijf toe te voegen.",
     "noMatch": "Geen passende rapporten",
-    "trySearch": "Probeer een andere naam of een ander jaar, of wis je zoekopdracht."
+    "trySearch": "Probeer een andere naam of een ander jaar, of wis de filters.",
+    "filterYear": "Filter op boekjaar",
+    "allYears": "Alle boekjaren",
+    "sort": "Sorteren op",
+    "newest": "Nieuwste eerst",
+    "recentlyDeleted": "Laatst verwijderd",
+    "nameOrder": "Bedrijfsnaam",
+    "yearOrder": "Laatste boekjaar",
+    "clearFilters": "Filters wissen",
+    "figures": "Cijfers bekijken",
+    "trash": "Prullenbak",
+    "trashHelp": "Zet een rapport terug om het weer bij Opgeslagen rapporten te zien.",
+    "trashCount": "{count, plural, one {# rapport in de Prullenbak} other {# rapporten in de Prullenbak}}",
+    "emptyTrash": "De Prullenbak is leeg",
+    "emptyTrashHelp": "Rapporten die je verwijdert, verschijnen hier.",
+    "delete": "Verwijderen",
+    "moveToTrash": "Naar de Prullenbak",
+    "confirmTitle": "{name} ({year}) verwijderen?",
+    "confirmHelp": "Het rapport verdwijnt uit Opgeslagen rapporten. Je kunt het vanuit de Prullenbak terugzetten, inclusief boekingen en documenten.",
+    "trashedNotice": "{name} ({year}) is naar de Prullenbak verplaatst.",
+    "restoredNotice": "{name} ({year}) is teruggezet bij Opgeslagen rapporten.",
+    "restore": "Rapport terugzetten",
+    "undo": "Ongedaan maken",
+    "backToSaved": "Terug naar opgeslagen rapporten"
   },
   "setup": {
     "title": "Een nieuw rapport starten",
