@@ -9,6 +9,8 @@ import { ReportSteps, ReportNext } from "@/components/report-steps";
 import { VatReview } from "@/components/vat-review";
 import { DocumentManagement, UploadForm } from "@/components/document-upload";
 import { InvoiceReview } from "@/components/invoice-review";
+import { DocumentChecklist } from "@/components/document-checklist";
+import { ReportYear } from "@/components/report-year";
 import Decimal from "decimal.js";
 import { Suspense } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -23,7 +25,8 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { businesses, workspace } from "@/lib/server/workspace";
-import { requirements, uploadPurposes } from "@/lib/model";
+import { isInvoicePurpose, requirements, uploadPurposes } from "@/lib/model";
+import { documentCoverage } from "@/lib/report-intake";
 import { quarters, quarterSchema } from "@/lib/vat";
 import { financials, readiness } from "@/lib/accounting";
 import { setLocale } from "./actions";
@@ -63,6 +66,9 @@ export default async function Page({
   const pendingDrafts = w?.invoiceDrafts?.filter(draft => !draft.posted_entry).length ?? 0;
   const bankIssues = w?.documents.filter(document => document.purpose === "bank" && ["bankPdfReview", "needsOcr"].includes(document.status)).length ?? 0;
   const uploadPurpose = uploadPurposes.find(purpose => purpose === params.kind);
+  const manualSource = view === "review" ? w?.documents.find(d => d.id === params.manualSource && isInvoicePurpose(d.purpose)) : undefined;
+  const coverage = view === "report" && w ? documentCoverage(w) : undefined;
+  const coverageGaps = coverage && Object.values(coverage.groups).flat().filter(state => state === "missing" || state === "partial").length;
   const postedDocuments = view === "documents" && w ? new Set([
     ...w.entries.map(entry => entry.source_id),
     ...w.bankRows.filter(row => row.posted_entry).map(row => row.document_id),
@@ -184,6 +190,7 @@ export default async function Page({
                   </Link>
                 </aside>
               </div>
+              <ReportYear workspace={w} preview={params.changeYear === "1"} />
             </>
           )}
           {w && view === "overview" && (
@@ -305,8 +312,10 @@ export default async function Page({
           {w && view === "documents" && (
             <>
               {title("documents")}
+              <p className="notice">{t("intake.uploadYear", { year: w.business.profile.year })}{" "}
+                <Link className="text-link" href="/?view=business#report-year">{t("intake.checkYear")}</Link></p>
               <div className="content-split">
-                <section className="panel">
+                <section className="panel" id="upload-documents">
                   <h2>{t("documents.upload")}</h2>
                   <UploadForm key={uploadPurpose ?? "auto"} businessId={w.business.id} initial={uploadPurpose} />
                   <p className="help">{t("documents.capability")}</p>
@@ -327,16 +336,22 @@ export default async function Page({
                   </ul>
                   <h3 id="return-periods">{t("imports.vatReturns")}</h3>
                   {p?.vatScope === "ordinaryQuarterly" ? <ul className="import-quarters">
-                    {quarters.map(quarter => <li key={quarter}>
-                      <Link className="text-link" href={"/?view=vat&quarter=" + quarter}>
-                        {t("vat.period", { quarter, year: p.year })}
-                      </Link>
-                      <span className="muted">{t(w.vatReturns.some(filed => filed.quarter === quarter) ? "imports.linked" : "imports.awaitingReturn")}</span>
-                    </li>)}
+                    {quarters.map(quarter => {
+                      const linked = w.vatReturns.some(filed => filed.quarter === quarter);
+                      const found = w.documents.find(d => d.purpose === "vat" && d.vat_suggestion?.quarter === quarter &&
+                        d.vat_suggestion.year === p.year);
+                      return <li key={quarter}>
+                        <Link className="text-link" href={"/?view=vat&quarter=" + quarter + (!linked && found ? "&source=" + found.id : "")}>
+                          {t("vat.period", { quarter, year: p.year })}
+                        </Link>
+                        <span className="muted">{t(linked ? "imports.linked" : found ? "intake.vatUploaded" : "imports.awaitingReturn")}</span>
+                      </li>;
+                    })}
                   </ul> : <Link className="text-link" href="/?view=vat">{t("nav.vat")}</Link>}
                   <p className="help">{t("imports.missingQuarterHelp")}</p>
                 </aside>
               </div>
+              <DocumentChecklist workspace={w} />
               <div className="document-list">
                 {w.documents.length === 0 ? (
                   <div className="empty-state">
@@ -390,17 +405,21 @@ export default async function Page({
           {w && view === "review" && (
             <>
               {title("review")}
-              <InvoiceReview workspace={w} locale={locale} selectedId={params.draft}
+              <InvoiceReview workspace={w} locale={locale} selectedId={params.draft} filter={params.issue}
                 page={/^\d+$/.test(params.draftPage ?? "") ? Number(params.draftPage) : 1} />
               <details
                 className="panel entry-panel"
-                open={!pendingDrafts}
+                id="manual-entry"
+                open={!pendingDrafts || Boolean(manualSource)}
               >
                 <summary>
                   <Plus size={18} />
                   <strong>{t("review.new")}</strong>
                 </summary>
-                <EntryForm businessId={w.business.id} profile={p!} documents={w.documents.map(({ id, name }) => ({ id, name }))} />
+                <EntryForm key={manualSource?.id ?? "manual"} businessId={w.business.id} profile={p!}
+                  sourceName={manualSource?.name} initialSource={manualSource?.id}
+                  initialKind={manualSource?.purpose === "purchase" ? "purchase" : "sale"}
+                  documents={w.documents.map(({ id, name }) => ({ id, name }))} />
               </details>
               <section className="panel" id="bank-imports">
                 <div className="section-heading">
@@ -580,8 +599,10 @@ export default async function Page({
                     {t("imports.draftWarning", { count: pendingDrafts })}</Link></li>}
                   {bankIssues > 0 && <li><Link className="guide-link" href="/?view=review#bank-imports">
                     {t("imports.bankIssueCount", { count: bankIssues })}</Link></li>}
-                  {p?.vatScope === "ordinaryQuarterly" && w.vatReturns.length < quarters.length &&
-                    <li>{t("imports.vatGapCount", { count: quarters.length - w.vatReturns.length })}</li>}
+                  {Boolean(coverageGaps) && <li><Link className="guide-link" href="/?view=documents#document-checklist">
+                    {t("intake.reportGaps", { count: coverageGaps! })}</Link></li>}
+                  {coverage && Object.values(coverage.groups).flat().some(state => state === "open" || state === "future") &&
+                    <li><Link className="guide-link" href="/?view=documents#document-checklist">{t("intake.reportOpen")}</Link></li>}
                   <li><Link className="guide-link" href="/?view=vat">{t("report.vatReview")}</Link></li>
                 </ul>
               </aside>
@@ -597,7 +618,7 @@ export default async function Page({
               />
             </>
           )}
-          {w && <ReportNext view={view} />}
+          {w && view !== "documents" && <ReportNext view={view} />}
         </main>
         <footer className="app-footer">
           <span>{t("app.footer")}</span>

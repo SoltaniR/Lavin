@@ -1,8 +1,11 @@
 import { z } from "zod";
 
+export const reportingYears = [2025, 2026] as const;
+export const reportingYearSchema = z.coerce.number().pipe(z.literal(reportingYears));
+
 export const profileSchema = z.object({
   name: z.string().trim().min(2).max(120),
-  year: z.coerce.number().int().min(2025).max(2026),
+  year: reportingYearSchema,
   kvk: z.string().regex(/^(\d{8})?$/),
   activity: z.enum(["services", "salon"]),
   vatMethod: z.enum(["invoice", "cash", "unknown"]),
@@ -55,7 +58,7 @@ export const uploadPurposes = ["auto", "sale", "purchase", "bank", "vat", "evide
 export type DocumentPurpose = Exclude<(typeof uploadPurposes)[number], "auto"> | "invoice";
 export const isInvoicePurpose = (value: unknown): value is "sale" | "purchase" | "invoice" =>
   value === "sale" || value === "purchase" || value === "invoice";
-export const invoiceReadVersion = 3;
+export const invoiceReadVersion = 4;
 export type InvoiceIssue = "unreadable" | "layout" | "missingFields" | "totalsConflict" | "nonEur" | "fxPending" | "special";
 export const invoiceDateAliases = ["created", "creation date", "aangemaakt", "olusturma tarihi"] as const;
 export type InvoiceDateAlias = (typeof invoiceDateAliases)[number];
@@ -65,6 +68,7 @@ export type InvoiceRate = { date: string; unitsPerEuro: string; currency: string
 export type InvoiceFields = {
   reference?: string;
   date?: string;
+  dateConfirmed?: boolean;
   amount?: string;
   invoiceVat?: string;
   description?: string;
@@ -74,6 +78,7 @@ export type InvoiceFields = {
   dateSuggestion?: DateSuggestion;
   foreign?: ForeignAmount;
   exchange?: InvoiceRate;
+  exchangeConfirmed?: boolean;
 };
 export type InvoiceDraft = {
   id: string;
@@ -95,6 +100,7 @@ export type Document = {
   vat_suggestion?: VatSuggestion;
   invoice_issues?: InvoiceIssue[];
   invoice_read_version?: number;
+  statement_period?: { account: string; start: string; end: string } | null;
 };
 export type BankRow = {
   id: string;

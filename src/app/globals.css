@@ -902,6 +902,18 @@ textarea {
 .import-draft a, .import-draft-list strong, .import-draft-list small { overflow-wrap: anywhere; }
 .import-draft-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .import-draft-list small { display: block; color: var(--muted); }
+.document-checklist, .report-year { margin: 18px 0; }
+.coverage-list { list-style: none; margin: 14px 0; padding: 0; }
+.coverage-list > li { border-top: 1px solid var(--line); padding: 12px 0; }
+.coverage-list .section-heading { align-items: baseline; gap: 8px 14px; flex-wrap: wrap; }
+.coverage-list h3, .coverage-list dl, .coverage-list dd { margin: 0; }
+.coverage-list dl > div { display: flex; flex-wrap: wrap; column-gap: 8px; }
+.coverage-list dt { font-weight: 600; }
+.coverage-future, .coverage-open { color: var(--muted); }
+.report-year .year-preview-list { margin: 10px 0; }
+.report-year > .text-link, .document-checklist > .button { margin-top: 10px; }
+.import-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; }
+.source-excerpt { display: block; margin-top: 6px; overflow-wrap: anywhere; }
 .import-duplicate { margin: 12px 0; }
 .import-duplicate summary { cursor: pointer; }
 .import-full-vat { justify-self: start; margin-top: 6px; }

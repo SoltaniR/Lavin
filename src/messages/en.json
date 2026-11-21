@@ -102,12 +102,12 @@
     "loans": "I have a business loan",
     "firstYear": "This is my first financial year",
     "create": "Create workspace",
-    "yearFixed": "The year is fixed for an existing workspace. Create a new workspace for another year.",
     "vatScope": "Which VAT returns do you file?",
     "vatScope_unknown": "Not sure yet",
     "vatScope_ordinaryQuarterly": "Quarterly, ordinary domestic VAT",
     "vatScope_other": "Other period, scheme or special case",
-    "vatScopeHelp": "Choose Other for KOR, exempt or cross-border sales, reverse charge, private-use adjustments or changed methods. Check your Belastingdienst letter if unsure."
+    "vatScopeHelp": "Choose Other for KOR, exempt or cross-border sales, reverse charge, private-use adjustments or changed methods. Check your Belastingdienst letter if unsure.",
+    "chooseYear": "Choose a reporting year"
   },
   "documents": {
     "title": "Your documents",
@@ -258,7 +258,7 @@
     "vat": "Only invoice entries can include a VAT amount in this form.",
     "opening": "Opening balances cannot use income or expense accounts.",
     "business": "Select a valid business workspace first.",
-    "year": "Create a new workspace to use a different reporting year.",
+    "year": "Use the report year correction below to change an existing report.",
     "localOnly": "This development workspace can only be used on this computer.",
     "fileSize": "Choose a non-empty file no larger than 20 MB.",
     "pageLimit": "Split this PDF into files of at most 100 pages.",
@@ -290,7 +290,9 @@
     "documentInUse": "This upload is linked to a posted booking or a saved VAT return. Open that record to review the source.",
     "draftDone": "This draft was already recorded or removed. Return to the invoice list.",
     "invoiceDuplicate": "An imported invoice with the same reference, date and total is already recorded. Check the original before removing or confirming this draft.",
-    "vatWrongPeriod": "This PDF shows a different quarter or year. Open the matching period to check it."
+    "vatWrongPeriod": "This PDF shows a different quarter or year. Open the matching period to check it.",
+    "reportYearChanged": "The report year changed. Refresh the page and try again.",
+    "reportYearBlocked": "The report now contains records that prevent a year change. Review the year preview again."
   },
   "auth": {
     "title": "Welcome to Lavin",
@@ -315,13 +317,13 @@
     "business": {
       "title": "Set up your business",
       "text": "From Home, choose Start a new report. Enter the company name, year and activity, then select Next: your records. Choose the relevant features and select Create report and add documents. To revise a saved company, choose Edit company information on Home.",
-      "tip": "Not sure about the VAT method? Choose “Not sure yet” and ask your accountant. The reporting year cannot be changed after creating this workspace.",
+      "tip": "Unsure about the VAT method? Choose “Not sure yet”. You can correct the year of a draft in Business details.",
       "action": "Start a new report"
     },
     "documents": {
       "title": "Upload your records",
       "text": "On Documents, choose a document type and select the available files together. Upload PDF invoices and bundles, UBL XML, invoice CSV, filed VAT PDFs, and MT940 or searchable bank statements.",
-      "tip": "Check the status beside each file. Open an upload to change its category or delete it before posting. Use Bookkeeping to review invoice drafts and bank movements. Link filed VAT returns using the quarter links.",
+      "tip": "Check the status beside each file. Open an upload to change its category or delete it before posting. Use Bookkeeping to review invoice drafts and bank movements. Link filed VAT returns using the quarter links. The checklist shows periods where records were found or may still be missing. You can continue and add files later.",
       "action": "Open documents"
     },
     "review": {
@@ -510,7 +512,13 @@
       "total": "Invoice total missing",
       "vat": "Invoice VAT missing",
       "reference": "Invoice reference or description missing",
-      "exchange": "Currency conversion needs input"
+      "exchange": "Currency conversion needs input",
+      "suggestedDate": "Confirm the suggested invoice date",
+      "currency": "Identify the original currency",
+      "unsupportedCurrency": "Currency has no supported ECB rate",
+      "originalTotal": "Total in the original currency missing",
+      "originalVat": "VAT in the original currency missing",
+      "rate": "Automatic EUR conversion pending"
     },
     "invoiceIssue": {
       "unreadable": "Some pages have no readable text. Check the scan quality or split large scanned bundles.",
@@ -561,6 +569,66 @@
     "useVatFigures": "Copy suggested figures",
     "useInvoiceVat": "Use full invoice VAT",
     "vatSuggestion": "Check the suggested amounts against the original before saving. Any unreadable figure stays blank.",
-    "noVatSuggestion": "Check the original and enter boxes 5a and 5b."
+    "noVatSuggestion": "Check the original and enter boxes 5a and 5b.",
+    "outsideYear": "{count, plural, one {# invoice falls outside the {year} report. Check its date or verify the selected year.} other {# invoices fall outside the {year} report. Check their dates or verify the selected year.}}",
+    "retryRates": "Retry automatic EUR conversions",
+    "noDraftCount": "{count, plural, one {# invoice file has no draft} other {# invoice files have no draft}}",
+    "manualFromSource": "Open manual entry",
+    "checkDate": "Enter the verified invoice date",
+    "saveDate": "Save invoice date",
+    "previewDateMatches": "{count, plural, one {Preview # matching draft in this report} other {Preview # matching drafts in this report}}",
+    "applyDateMatches": "Apply this label to the drafts shown above.",
+    "filterDrafts": "Filter invoice drafts",
+    "noFilterResults": "No invoice drafts match this filter.",
+    "filters": {
+      "all": "All drafts",
+      "ready": "Ready to confirm",
+      "input": "Needs input",
+      "year": "Outside report year"
+    }
+  },
+  "intake": {
+    "title": "Document checklist for {year}",
+    "help": "Check the periods covered by your uploads. For sales and purchases, a period is listed as found when at least one dated invoice is available. If there was no activity, you can leave that month open.",
+    "missing": "Nothing found",
+    "partial": "Partly covered",
+    "present": "Documents found",
+    "open": "Period still in progress",
+    "future": "Future period",
+    "unverified": "{count, plural, one {# upload needs review} other {# uploads need review}}",
+    "vatScope": "Choose quarterly VAT in Business details to track quarterly returns here.",
+    "add": {
+      "sale": "Add sales invoices",
+      "purchase": "Add purchase invoices",
+      "bank": "Add bank statements",
+      "vat": "Add filed VAT returns"
+    },
+    "continue": "Continue to Bookkeeping",
+    "continueHelp": "You can continue with the documents you have and add missing records later. The checklist remains available in the draft report.",
+    "reportGaps": "{count, plural, one {# document period to check} other {# document periods to check}}",
+    "reportOpen": "Review in-progress and future document periods",
+    "uploadYear": "You are adding documents to the {year} report.",
+    "checkYear": "Check reporting year",
+    "yearTitle": "Reporting year {year}",
+    "yearHelp": "If the year was selected by mistake, preview how a correction would affect this draft.",
+    "yearChange": "Preview change to {target}",
+    "yearPreview": "Preview {target}",
+    "yearPreviewHelp": "{count, plural, one {The original file stays in this report.} other {All # original files stay in this report.}} Invoice dates are kept as read. Eligible foreign currency drafts will be converted to euros.",
+    "yearDated": "{count, plural, one {# invoice draft dated in {target}} other {# invoice drafts dated in {target}}}",
+    "yearUndated": "{count, plural, one {# invoice draft with a date to check} other {# invoice drafts with dates to check}}",
+    "yearOutside": "{count, plural, one {# invoice draft dated outside {target} will need review} other {# invoice drafts dated outside {target} will need review}}",
+    "yearCheckSources": "View dated files outside the proposed year",
+    "yearBlocked": "This report contains records that belong to its current year or need period verification. Start a separate report for the other year.",
+    "yearBlock": {
+      "posted": "{count, plural, one {# recorded journal entry} other {# recorded journal entries}}",
+      "bank": "{count, plural, one {# bank statement with movements outside the proposed year} other {# bank statements with movements outside the proposed year}}",
+      "vat": "{count, plural, one {# linked VAT return whose period could not be verified for the proposed year} other {# linked VAT returns whose periods could not be verified for the proposed year}}"
+    },
+    "yearConfirm": "Change reporting year to {target}",
+    "yearConfirmHelp": "I checked the preview and the report is for {target}.",
+    "yearCancel": "Cancel year change",
+    "continueWithGaps": "Continue with current documents",
+    "vatUploaded": "PDF found ? review and link",
+    "yearEndRecords": "Check other records for this business"
   }
 }

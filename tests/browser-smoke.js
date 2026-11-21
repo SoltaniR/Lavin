@@ -6,6 +6,7 @@ async (page) => {
   await page.goto(base + '/?view=setup');
   await page.getByRole('button', {name:'EN',exact:true}).click();
   await page.getByLabel('Business name').fill('QA Studio ' + Date.now());
+  await page.getByLabel('Reporting year').selectOption('2025');
   await page.getByRole('button',{name:'Next: your records',exact:true}).click();
   await page.getByLabel('VAT accounting method').selectOption('invoice');
   await page.getByLabel('This is my first financial year').check();

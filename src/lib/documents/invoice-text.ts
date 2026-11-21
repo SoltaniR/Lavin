@@ -1,12 +1,12 @@
-import { labeled, sourceDate, sourceMoney } from "./fields";
+import { labeled, labeledValues, sourceDate, sourceMoney } from "./fields";
 import { invoiceDateAliases, type DateSuggestion, type ForeignAmount } from "../model";
 import { exchangeCurrencies } from "./exchange-rates";
 
 export const foldInvoiceText = (text: string) =>
   text.normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i").toLowerCase();
 
-const referenceLabel = /^(?:factuur[\s-]*(?:nummer|nr\.?|#)|invoice[\s-]*(?:number|no\.?|#|id)|(?:e[- ]?)?(?:arsiv\s+)?fatura[\s-]*(?:numarasi|no\.?|num\.?))(?=$|[\s:#])|^(?:factuur|invoice|fatura)\s*:/;
-const issueDateLabel = /^(?:factuur\s*datum|datum factuur|invoice date|issue date|date of issue|fatura tarihi|duzenleme tarihi)(?=$|[\s:=])/;
+const referenceLabel = /^(?:factuur|invoice|fatura)\s*#|^(?:factuur[\s-]*(?:nummer|nr\.?)|invoice[\s-]*(?:number|no\.?|id)|(?:e[- ]?)?(?:arsiv\s+)?fatura[\s-]*(?:numarasi|no\.?|num\.?))(?=$|[\s:#])|^(?:factuur|invoice|fatura)\s*:/;
+const issueDateLabel = /^(?:factuur\s*datum|datum factuur|datum van (?:afgifte|uitgifte)|invoice date|issue date|date of issue|fatura tarihi|duzenleme tarihi)(?=$|[\s:=])/;
 const dateLabel = /^(?:datum|date|tarih)(?=$|[\s:=])/;
 const netLabel = /^(?:sub[ -]?total|subtotaal|netto totaal|net amount|(?:(?:totaal|total|bedrag)\s+)?excl(?:usief|uding|\.)?\s*(?:btw|vat)|(?:mal\s*(?:\/\s*)?hizmet\s+)?toplam tutar[i]?|ara toplam|kdv haric (?:toplam|tutar))(?=$|[\s:=])/;
 const grossLabel = /^(?:(?:(?:totaal(?:bedrag)?|total(?: amount)?)\s*)?(?:incl\.?\s*(?:btw|vat)|inclusief btw|including vat|incl\.?\s*tax)|invoice total|factuurtotaal|totaal factuur|grand total|(?:vergiler|kdv) dahil(?: toplam)?(?: tutar[i]?)?|genel toplam|total|totaal(?:bedrag)?)(?=$|[\s:=€])/;
@@ -30,16 +30,19 @@ const monthNames = [
 const months = new Map<string, string>([
   ...monthNames,
   ...monthNames.map(([name, month]) => [name.slice(0, 3), month] as const),
+  ["sept", "9"],
 ]);
+const weekday = /^(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|maandag|dinsdag|woensdag|donderdag|vrijdag|zaterdag|zondag|pazartesi|sali|carsamba|persembe|cuma|cumartesi|pazar)\s+/;
 
-function invoiceDate(value: string) {
+export function readPrintedDate(value: string) {
   const text = value.trim().replace(/[\sT]\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm))?$/i, "");
   const numeric = sourceDate(text);
   if (numeric) return numeric;
   // Accept US month/day only when the second number makes the order unambiguous.
   const us = text.match(/^(\d{1,2})\/(1[3-9]|[23]\d)\/(\d{4})$/);
   if (us) return sourceDate([us[3], us[1], us[2]].join("-"));
-  const named = foldInvoiceText(text).replace(/[.,]/g, "").match(/^(?:(\d{1,2})\s+([a-z]+)|([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?)\s+(\d{4})$/);
+  const named = foldInvoiceText(text).replace(/[.,]/g, "").replace(weekday, "")
+    .match(/^(?:(\d{1,2})(?:st|nd|rd|th)?\s+([a-z]+)|([a-z]+)\s+(\d{1,2})(?:st|nd|rd|th)?)\s+(\d{4})$/);
   const month = named && months.get(named[2] ?? named[3]);
   return month && named ? sourceDate([named[5], month, named[1] ?? named[4]].join("-")) : undefined;
 }
@@ -56,12 +59,20 @@ export function invoiceCurrency(lines: string[]): ForeignAmount | undefined {
     /^[a-z]{3}$/i.test(value) ? readCurrencyCode(value) : undefined,
   );
   if (header) return header === "EUR" ? undefined : { currency: header };
-  const codes = new Set([...text.matchAll(currencyAmount)].map(match => readCurrencyCode(match[1] ?? match[2])));
-  const totalCurrency = labeled(lines.map(foldInvoiceText), grossLabel, value => {
-    const code = value.match(/^\(([a-z]{3})\)/)?.[1];
-    return code && currencies.includes(code.toUpperCase()) ? code.toUpperCase() : undefined;
+  // A currency printed on the invoice total takes precedence over payment and fee details.
+  const totals = labeledValues(lines.map(foldInvoiceText), grossLabel, value => {
+    const code = value.match(/^\(([a-z]{3})\)/i)?.[1] ?? value.match(currencyToken)?.[0].trim();
+    const currency = code && (currencies.includes(readCurrencyCode(code)) || ["EUR", "TL"].includes(code.toUpperCase())) ? readCurrencyCode(code)
+      : /^\s*(?:EUR\b|€)|(?:\bEUR|€)\s*$/i.test(value) ? "EUR"
+      : /\bus\$/i.test(value) ? "USD" : /\b(?:ca|c)\$/i.test(value) ? "CAD" : /\b(?:au|a)\$/i.test(value) ? "AUD"
+      : /£/.test(value) ? "GBP" : /₺/.test(value) ? "TRY" : /[$¥]/.test(value) ? "ambiguous" : undefined;
+    const foreign = currency === "EUR" ? undefined : { currency: currency === "ambiguous" ? undefined : currency };
+    return currency && money(value, foreign) !== undefined ? currency : undefined;
   });
-  if (totalCurrency) codes.add(totalCurrency);
+  if (totals.size === 1 && totals.has("EUR")) return undefined;
+  if (totals.size > 1) return {};
+  if (totals.size === 1 && !totals.has("ambiguous")) return { currency: [...totals][0] };
+  const codes = new Set([...text.matchAll(currencyAmount)].map(match => readCurrencyCode(match[1] ?? match[2])));
   if (/\bUS\$/i.test(text)) codes.add("USD");
   if (/\b(?:CA|C)\$/i.test(text)) codes.add("CAD");
   if (/\b(?:AU|A)\$/i.test(text)) codes.add("AUD");
@@ -96,7 +107,7 @@ export function joinInvoiceColumns(lines: string[]) {
       invoiceDateAliases.includes(foldInvoiceText(label.slice(0, -1)) as DateSuggestion["label"]));
     const referenceIndex = labels.findIndex(label => referenceLabel.test(foldInvoiceText(label)));
     if (labels.length > 1 && referenceIndex >= 0 && dateIndex >= 0 && values.length === labels.length &&
-      invoiceDate(values[dateIndex]) && /^[\p{L}\d][\p{L}\d._/-]{0,79}$/u.test(values[referenceIndex])) {
+      readPrintedDate(values[dateIndex]) && /^[\p{L}\d][\p{L}\d._/-]{0,79}$/u.test(values[referenceIndex])) {
       result.push(...labels.map((label, index) => label + " " + values[index]));
       i += labels.length;
     } else {
@@ -129,9 +140,9 @@ export const invoiceGross = (lines: string[]) => labeled(lines.map(foldInvoiceTe
 export function readInvoiceFields(lines: string[]) {
   const normalized = lines.map(foldInvoiceText);
   const foreign = invoiceCurrency(lines);
-  const date = labeled(normalized, issueDateLabel, invoiceDate) ?? labeled(normalized, dateLabel, invoiceDate);
+  const date = labeled(normalized, issueDateLabel, readPrintedDate) ?? labeled(normalized, dateLabel, readPrintedDate);
   const alternatives = invoiceDateAliases.flatMap(label => {
-    const value = labeled(normalized, new RegExp("^" + label + "(?=$|[\\s:=])"), invoiceDate);
+    const value = labeled(normalized, new RegExp("^" + label + "(?=$|[\\s:=])"), readPrintedDate);
     return value ? [{ label, date: value }] : [];
   });
   const dateSuggestion = !date && alternatives.length === 1 ? { ...alternatives[0], supplier: identifySupplier(lines) } : undefined;

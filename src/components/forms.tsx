@@ -21,6 +21,7 @@ import {
 import {
   accounts,
   defaultProfile,
+  reportingYears,
   type Business,
   type Document,
   type Profile,
@@ -170,11 +171,12 @@ export function ProfileForm({ business, guided = false }: { business?: Business;
         </label>
         <label>
           {t("business.year")}
-          <select name="year" defaultValue={p.year}>
-            {(business ? [p.year] : [2025, 2026]).map((y) => (
+          {business ? <input name="year" value={p.year} readOnly /> : <select name="year" required defaultValue="">
+            <option value="" disabled>{t("business.chooseYear")}</option>
+            {reportingYears.map((y) => (
               <option key={y}>{y}</option>
             ))}
-          </select>
+          </select>}
         </label>
         <label>
           {t("business.activity")}
@@ -225,7 +227,6 @@ export function ProfileForm({ business, guided = false }: { business?: Business;
           </label>
         ))}
       </div>
-      {business && <p className="help">{t("business.yearFixed")}</p>}
       </div>
       {guided && <div className="setup-controls">
         {step === 1 ? <button type="button" className="button primary" onClick={next}>{t("setup.next")}</button>
@@ -261,16 +262,23 @@ export function EntryForm({
   profile,
   documents,
   draft,
+  sourceName,
+  initialSource,
+  initialKind = "sale",
 }: {
   businessId: string;
   profile: Profile;
   documents: Pick<Document, "id" | "name">[];
   draft?: InvoiceDraft;
+  sourceName?: string;
+  initialSource?: string;
+  initialKind?: "sale" | "purchase";
 }) {
   const t = useTranslations(),
-    [kind, setKind] = useState<string>(draft ? draft.direction ?? "" : "sale");
+    [kind, setKind] = useState<string>(draft ? draft.direction ?? "" : initialKind);
   const invoice = ["sale", "purchase"].includes(kind);
   const fields = draft?.fields;
+  const reference = fields?.reference || sourceName;
   const invoiceVat = fields?.invoiceVat;
   const vatAmount = useRef<HTMLInputElement>(null);
   return (
@@ -311,7 +319,8 @@ export function EntryForm({
         <label className="wide">
           {t("common.description")}
           <input name="description" minLength={3} maxLength={240} required
-            defaultValue={fields?.description || (fields?.reference ? t("imports.invoiceDescription", { reference: fields.reference }) : "")} />
+            defaultValue={fields?.description || (reference
+              ? t("imports.invoiceDescription", { reference }).slice(0, 240) : "")} />
         </label>
         <label>
           {t("review.gross")}
@@ -388,7 +397,7 @@ export function EntryForm({
         {invoice && <input type="hidden" name="credit" value="payables" />}
         {draft && !documents.length ? <input type="hidden" name="sourceId" value={draft.document_id} /> : <label className="wide">
           {t(draft ? "imports.originalInvoice" : "common.source")}
-          <select name="sourceId">
+          <select name="sourceId" defaultValue={draft?.document_id ?? initialSource ?? ""}>
             <option value={draft?.document_id ?? ""}>{t(draft ? "imports.keepCsv" : "common.noSource")}</option>
             {documents.map((d) => (
               <option value={d.id} key={d.id}>

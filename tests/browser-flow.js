@@ -3,6 +3,7 @@ async (page) => {
   const base = new URL(page.url()).origin;
   const check = (value, message) => { if (!value) throw new Error(message); };
   const stamp = Date.now(), first = `Flow Studio ${stamp}`, second = `Other Studio ${stamp}`;
+  await page.setViewportSize({width:1440,height:1000});
   async function home() {
     await page.goto(base);
     await page.getByRole('heading', {name:'What would you like to do?',exact:true}).waitFor();
@@ -14,6 +15,9 @@ async (page) => {
   await page.getByRole('button', {name:'Explore a sample business',exact:true}).click();
   await page.waitForURL(base+'/?view=overview');
   await page.locator('.business-chip').filter({hasText:'Studio Noord'}).waitFor();
+  await page.goto(base+'/?view=business&changeYear=1');
+  await page.locator('#report-year').getByText(/recorded journal entries/).waitFor();
+  check(!await page.locator('#report-year button[type=submit]').count(), 'Year correction was offered for posted entries');
   await home();
   await page.context().clearCookies({name:'business'});
   await page.goto(base+'/?view=overview');
@@ -28,7 +32,8 @@ async (page) => {
     await page.getByRole('button', {name:'Next: your records',exact:true}).click();
     await page.getByRole('heading', {name:'Which company is this for?',exact:true}).waitFor();
     await page.getByLabel('Business name').fill(name);
-    await page.getByLabel('Reporting year').selectOption('2025');
+    check(await page.getByLabel('Reporting year').inputValue() === '', 'Setup chose a year without input');
+    await page.getByLabel('Reporting year').selectOption(detailed ? '2026' : '2025');
     await page.getByLabel('Business name').press('Enter');
     await page.getByRole('heading', {name:'Tell us about your records',exact:true}).waitFor();
     await page.getByRole('button', {name:'Back to company details',exact:true}).click();
@@ -45,7 +50,7 @@ async (page) => {
   }
   await start(first, true);
   for (const [label, view] of [['Bookkeeping','review'],['Year-end checks','yearend'],['Draft report','report']]) {
-    await page.locator('.report-next').getByRole('link', {name:'Next: '+label,exact:true}).click();
+    await page.locator('.report-next').getByRole('link', {name:view === 'review' ? 'Continue with current documents' : 'Next: '+label,exact:true}).click();
     await page.waitForURL(base+'/?view='+view);
   }
   await page.getByRole('link', {name:'Back to saved reports',exact:true}).click();

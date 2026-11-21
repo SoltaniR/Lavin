@@ -33,7 +33,7 @@ export function CompanyPicker({ businesses, editing, trashed }: {
     status.current?.focus();
   }, [state]);
 
-  const years = new Set(businesses.map(b => b.profile.year));
+  const years = new Set<number>(businesses.map(b => b.profile.year));
   if (year) years.add(Number(year));
   const words = search.trim().toLocaleLowerCase(locale);
   const filtered = businesses.filter(({ profile }) =>

@@ -11,6 +11,7 @@ import { prepareUpload, type ImportPurpose } from "../documents/prepare";
 import { db, dataDir } from "./db";
 import { writeActiveReport } from "./workspace";
 import { withExchangeRate } from "./invoice-exchange";
+import { currentInvoiceIssues, preserveConfirmedFields } from "../documents/invoice-review";
 
 export const purposeSchema = z.enum(uploadPurposes);
 export const maxUploadBytes = 20 * 1024 * 1024;
@@ -37,8 +38,9 @@ async function clearDocumentImports(tx: Transaction, businessId: string, id: str
   await tx.query("delete from bank_rows where business_id=$1 and document_id=$2 and posted_entry is null", [businessId, id]);
 }
 
-export async function deleteUnusedDocument(businessId: string, id: string) {
-  await writeActiveReport(businessId, async tx => {
+export async function deleteUnusedDocument(business: Business, id: string) {
+  const businessId = business.id;
+  await writeActiveReport(business, async tx => {
     await editableDocument(tx, businessId, id);
     await clearDocumentImports(tx, businessId, id);
     await tx.query("delete from documents where business_id=$1 and id=$2", [businessId, id]);
@@ -72,14 +74,11 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
       ? suggestion.date : undefined);
     return invoice.foreign ? withExchangeRate({ ...invoice, date }, business.profile.year) : { ...invoice, date };
   }));
-  const issues = invoiceIssues?.filter(issue =>
-    issue === "fxPending" ? resolvedInvoices.some(invoice => invoice.foreign && !invoice.exchange)
-      : issue === "missingFields" ? resolvedInvoices.some(invoice => !invoice.date || !invoice.reference ||
-        (invoice.foreign ? !invoice.foreign.amount || invoice.foreign.vat === undefined
-          : !invoice.amount || invoice.invoiceVat === undefined))
-        : true,
-  );
-  const finalStatus = status === "invoicePartial" && resolvedInvoices.length && !issues?.length ? "invoiceReady" : status;
+  const direction = detected === "sale" || detected === "purchase" ? detected : null;
+  const issues = resolvedInvoices.length
+    ? currentInvoiceIssues(invoiceIssues, resolvedInvoices.map(fields => ({ fields, direction })), business.profile.year)
+    : invoiceIssues;
+  const finalStatus = resolvedInvoices.length ? issues?.length ? "invoicePartial" : "invoiceReady" : status;
   if (statement?.rows.some(row => !row.date.startsWith(business.profile.year + "-"))) throw new DomainError("date");
   const id = existingId ?? randomUUID();
   const original = path.join(dataDir, "uploads", id);
@@ -88,18 +87,18 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
     await writeFile(original, bytes, { flag: "wx" });
   }
   try {
-    await writeActiveReport(business.id, async tx => {
-      let dismissedFields: InvoiceFields[] = [];
+    await writeActiveReport(business, async tx => {
+      let priorDrafts: { id: string; fields: InvoiceFields; dismissed: boolean }[] = [];
       if (existingId) {
         const current = await editableDocument(tx, business.id, existingId);
         if (current.sha256 !== sha) throw new DomainError("documentMissing");
         if (existing?.reread) {
           if (current.purpose !== purpose) throw new DomainError("documentCategoryChanged");
-          const dismissed = await tx.query<{ fields: InvoiceFields }>(
-            "select fields from invoice_drafts where business_id=$1 and document_id=$2 and dismissed",
+          const prior = await tx.query<(typeof priorDrafts)[number]>(
+            "select id,fields,dismissed from invoice_drafts where business_id=$1 and document_id=$2 order by position",
             [business.id, id],
           );
-          dismissedFields = dismissed.rows.map(row => row.fields);
+          priorDrafts = prior.rows;
         } else if (current.purpose === detected && current.status === finalStatus) return;
         await clearDocumentImports(tx, business.id, existingId);
       } else if ((await tx.query(
@@ -140,16 +139,27 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
           [business.id, id, JSON.stringify(rows)],
         );
       }
-      if (resolvedInvoices.length) {
-        const rows = resolvedInvoices.map((fields, position) => ({
-          id: randomUUID(), fields, position,
-          dismissed: dismissedFields.some(prior => prior.page === fields.page && prior.reference === fields.reference),
-        }));
-        const direction = detected === "sale" || detected === "purchase" ? detected : null;
+      const matched = new Set<string>();
+      const rows = resolvedInvoices.map(fields => {
+        const samePage = priorDrafts.filter(prior => prior.fields.page === fields.page && !matched.has(prior.id));
+        const candidates = samePage.filter(prior => prior.fields.reference === fields.reference);
+        const prior = candidates.length === 1 ? candidates[0] : samePage.length === 1 &&
+          (!samePage[0].fields.reference || !fields.reference) &&
+          resolvedInvoices.filter(item => item.page === fields.page).length === 1 ? samePage[0] : undefined;
+        if (!prior) return { id: randomUUID(), fields, dismissed: false };
+        matched.add(prior.id);
+        return { ...prior, fields: preserveConfirmedFields(prior.fields, fields) };
+      });
+      const retained = priorDrafts.filter(prior => !matched.has(prior.id) &&
+        (prior.dismissed || prior.fields.dateConfirmed || prior.fields.exchangeConfirmed ||
+          prior.fields.date && prior.fields.date === prior.fields.dateSuggestion?.date));
+      const retainedPages = new Set(retained.map(prior => prior.fields.page));
+      const merged = [...rows.filter(row => matched.has(row.id) || !retainedPages.has(row.fields.page)), ...retained];
+      if (merged.length) {
         await tx.query(
           "insert into invoice_drafts(id,business_id,document_id,direction,position,fields,dismissed) " +
           "select id,$1,$2,$3,position,fields,dismissed from jsonb_to_recordset($4::jsonb) as r(id uuid,position int,fields jsonb,dismissed boolean)",
-          [business.id, id, direction, JSON.stringify(rows)],
+          [business.id, id, direction, JSON.stringify(merged.map((row, position) => ({ ...row, position })))],
         );
       }
     });

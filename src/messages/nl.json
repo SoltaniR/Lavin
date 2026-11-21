@@ -102,12 +102,12 @@
     "loans": "Ik heb een zakelijke lening",
     "firstYear": "Dit is mijn eerste boekjaar",
     "create": "Werkruimte aanmaken",
-    "yearFixed": "Het jaar van een bestaande werkruimte staat vast. Maak voor een ander jaar een nieuwe werkruimte.",
     "vatScope": "Welke btw-aangiften doe je?",
     "vatScope_unknown": "Nog niet zeker",
     "vatScope_ordinaryQuarterly": "Per kwartaal, gewone binnenlandse btw",
     "vatScope_other": "Ander tijdvak, andere regeling of bijzonder geval",
-    "vatScopeHelp": "Kies Ander bij de KOR, vrijgestelde of buitenlandse omzet, verlegging, privégebruik of een gewijzigd stelsel. Kijk bij twijfel in je aangiftebrief."
+    "vatScopeHelp": "Kies Ander bij de KOR, vrijgestelde of buitenlandse omzet, verlegging, privégebruik of een gewijzigd stelsel. Kijk bij twijfel in je aangiftebrief.",
+    "chooseYear": "Kies een boekjaar"
   },
   "documents": {
     "title": "Je documenten",
@@ -258,7 +258,7 @@
     "vat": "Alleen factuurboekingen kunnen in dit formulier een btw-bedrag bevatten.",
     "opening": "Een beginbalans mag geen omzet- of kostenrekeningen bevatten.",
     "business": "Selecteer eerst een geldige onderneming.",
-    "year": "Maak een nieuwe werkruimte aan voor een ander boekjaar.",
+    "year": "Gebruik de optie hieronder om het boekjaar van dit rapport te wijzigen.",
     "localOnly": "Deze ontwikkelwerkruimte is alleen op deze computer beschikbaar.",
     "fileSize": "Kies een niet-leeg bestand van maximaal 20 MB.",
     "pageLimit": "Splits deze PDF in bestanden van maximaal 100 pagina’s.",
@@ -290,7 +290,9 @@
     "documentInUse": "Dit bestand is gekoppeld aan een vastgelegde boeking of opgeslagen btw-aangifte. Open die boeking of aangifte om het bewijsstuk te controleren.",
     "draftDone": "Dit concept is al geboekt of verwijderd. Ga terug naar de factuurlijst.",
     "invoiceDuplicate": "Een ingelezen factuur met dezelfde referentie, datum en totaal is al geboekt. Controleer het origineel voordat je het concept verwijdert of bevestigt.",
-    "vatWrongPeriod": "Deze pdf toont een ander kwartaal of jaar. Open het juiste tijdvak om het te controleren."
+    "vatWrongPeriod": "Deze pdf toont een ander kwartaal of jaar. Open het juiste tijdvak om het te controleren.",
+    "reportYearChanged": "Het boekjaar is gewijzigd. Vernieuw de pagina en probeer het opnieuw.",
+    "reportYearBlocked": "Dit rapport bevat nu gegevens die een jaarwijziging blokkeren. Bekijk het wijzigingsoverzicht opnieuw."
   },
   "auth": {
     "title": "Welkom bij Lavin",
@@ -315,13 +317,13 @@
     "business": {
       "title": "Stel je bedrijf in",
       "text": "Kies op de startpagina Een nieuw rapport starten. Vul bedrijfsnaam, boekjaar en activiteit in en kies Verder: je administratie. Vink aan wat van toepassing is en maak het rapport aan. Kies Bedrijfsgegevens wijzigen op de startpagina om een opgeslagen bedrijf bij te werken.",
-      "tip": "Weet je niet welk btw-stelsel je gebruikt? Kies “Nog niet zeker” en vraag je boekhouder. Na het aanmaken kun je het boekjaar van deze werkruimte niet meer wijzigen.",
+      "tip": "Twijfel je over de btw-methode? Kies ‘Nog niet zeker’. Je kunt het boekjaar van een concept via Bedrijfsgegevens corrigeren.",
       "action": "Een nieuw rapport starten"
     },
     "documents": {
       "title": "Upload je documenten",
       "text": "Kies bij Documenten een documenttype en selecteer de beschikbare bestanden tegelijk. Gebruik pdf’s met een of meer facturen, UBL XML, factuur-csv, ingediende btw-pdf’s en MT940 of doorzoekbare bankafschriften.",
-      "tip": "Controleer de status bij elk bestand. Open een bestand om de categorie te wijzigen of het bestand te verwijderen voordat je boekt. Controleer conceptfacturen en bankmutaties bij Boekhouding. Gebruik de kwartaallinks om ingediende btw-aangiften te koppelen.",
+      "tip": "Controleer de status bij elk bestand. Open een bestand om de categorie te wijzigen of het bestand te verwijderen voordat je boekt. Controleer conceptfacturen en bankmutaties bij Boekhouding. Gebruik de kwartaallinks om ingediende btw-aangiften te koppelen. De checklist toont voor welke perioden documenten zijn gevonden of nog kunnen ontbreken. Je kunt doorgaan en later bestanden toevoegen.",
       "action": "Open documenten"
     },
     "review": {
@@ -510,7 +512,13 @@
       "total": "Factuurtotaal ontbreekt",
       "vat": "Factuur-btw ontbreekt",
       "reference": "Factuurreferentie of omschrijving ontbreekt",
-      "exchange": "Valutaomrekening vraagt om invoer"
+      "exchange": "Valutaomrekening vraagt om invoer",
+      "suggestedDate": "Bevestig de voorgestelde factuurdatum",
+      "currency": "Bepaal de oorspronkelijke valuta",
+      "unsupportedCurrency": "Voor deze valuta is geen ondersteunde ECB-koers beschikbaar",
+      "originalTotal": "Totaal in oorspronkelijke valuta ontbreekt",
+      "originalVat": "Btw in oorspronkelijke valuta ontbreekt",
+      "rate": "Automatische euro-omrekening in behandeling"
     },
     "invoiceIssue": {
       "unreadable": "Op sommige pagina’s ontbreekt leesbare tekst. Controleer de scankwaliteit of splits grote scanbundels.",
@@ -561,6 +569,66 @@
     "useVatFigures": "Voorgestelde bedragen overnemen",
     "useInvoiceVat": "Volledige factuur-btw overnemen",
     "vatSuggestion": "Vergelijk de voorgestelde bedragen met het origineel voordat je opslaat. Onleesbare bedragen blijven leeg.",
-    "noVatSuggestion": "Controleer het origineel en vul rubrieken 5a en 5b in."
+    "noVatSuggestion": "Controleer het origineel en vul rubrieken 5a en 5b in.",
+    "outsideYear": "{count, plural, one {# factuur valt buiten het rapport voor {year}. Controleer de datum of het gekozen boekjaar.} other {# facturen vallen buiten het rapport voor {year}. Controleer hun datums of het gekozen boekjaar.}}",
+    "retryRates": "Automatische euro-omrekening opnieuw proberen",
+    "noDraftCount": "{count, plural, one {# factuurbestand zonder concept} other {# factuurbestanden zonder concept}}",
+    "manualFromSource": "Handmatige boeking openen",
+    "checkDate": "Gecontroleerde factuurdatum invoeren",
+    "saveDate": "Factuurdatum opslaan",
+    "previewDateMatches": "{count, plural, one {Bekijk # passend concept in dit rapport} other {Bekijk # passende concepten in dit rapport}}",
+    "applyDateMatches": "Pas dit label toe op de hierboven getoonde concepten.",
+    "filterDrafts": "Factuurconcepten filteren",
+    "noFilterResults": "Geen factuurconcepten voor dit filter.",
+    "filters": {
+      "all": "Alle concepten",
+      "ready": "Klaar voor controle",
+      "input": "Invoer nodig",
+      "year": "Buiten het boekjaar"
+    }
+  },
+  "intake": {
+    "title": "Documentenchecklist voor {year}",
+    "help": "Bekijk welke perioden je uploads afdekken. Bij verkoop en inkoop verschijnt een periode als gevonden als er minstens één gedateerde factuur is. Als er geen activiteit was, kun je die maand openlaten.",
+    "missing": "Niets gevonden",
+    "partial": "Gedeeltelijk gedekt",
+    "present": "Documenten gevonden",
+    "open": "Periode loopt nog",
+    "future": "Toekomstige periode",
+    "unverified": "{count, plural, one {# upload vraagt controle} other {# uploads vragen controle}}",
+    "vatScope": "Kies kwartaalaangifte in de bedrijfsgegevens om hier btw-aangiften per kwartaal te volgen.",
+    "add": {
+      "sale": "Verkoopfacturen toevoegen",
+      "purchase": "Inkoopfacturen toevoegen",
+      "bank": "Bankafschriften toevoegen",
+      "vat": "Ingediende btw-aangiften toevoegen"
+    },
+    "continue": "Verder naar de boekhouding",
+    "continueHelp": "Je kunt verder met de documenten die je hebt en ontbrekende stukken later toevoegen. De checklist blijft beschikbaar vanuit het conceptrapport.",
+    "reportGaps": "{count, plural, one {Controleer # periode op ontbrekende documenten} other {Controleer # perioden op ontbrekende documenten}}",
+    "reportOpen": "Bekijk lopende en toekomstige documentperioden",
+    "uploadYear": "Je voegt documenten toe aan het rapport voor {year}.",
+    "checkYear": "Boekjaar controleren",
+    "yearTitle": "Boekjaar {year}",
+    "yearHelp": "Als je per ongeluk het verkeerde jaar hebt gekozen, bekijk dan eerst wat een wijziging voor dit concept betekent.",
+    "yearChange": "Wijziging naar {target} bekijken",
+    "yearPreview": "Voorbeeld voor {target}",
+    "yearPreviewHelp": "{count, plural, one {Het originele bestand blijft in dit rapport.} other {Alle # originele bestanden blijven in dit rapport.}} De gelezen factuurdatums blijven bewaard. Factuurconcepten met voldoende valutagegevens worden naar euro omgerekend.",
+    "yearDated": "{count, plural, one {# factuurconcept met een datum in {target}} other {# factuurconcepten met een datum in {target}}}",
+    "yearUndated": "{count, plural, one {# factuurconcept waarvan je de datum moet controleren} other {# factuurconcepten waarvan je de datum moet controleren}}",
+    "yearOutside": "{count, plural, one {# factuurconcept met een datum buiten {target} vraagt controle} other {# factuurconcepten met een datum buiten {target} vragen controle}}",
+    "yearCheckSources": "Bekijk bestanden met een datum buiten het voorgestelde jaar",
+    "yearBlocked": "Dit rapport bevat gegevens uit het huidige boekjaar of perioden die je nog moet verifiëren. Start een apart rapport voor het andere jaar.",
+    "yearBlock": {
+      "posted": "{count, plural, one {# geboekte journaalpost} other {# geboekte journaalposten}}",
+      "bank": "{count, plural, one {# bankafschrift met mutaties buiten het voorgestelde jaar} other {# bankafschriften met mutaties buiten het voorgestelde jaar}}",
+      "vat": "{count, plural, one {# gekoppelde btw-aangifte waarvan de periode voor het voorgestelde jaar niet kon worden bevestigd} other {# gekoppelde btw-aangiften waarvan de perioden voor het voorgestelde jaar niet konden worden bevestigd}}"
+    },
+    "yearConfirm": "Boekjaar wijzigen naar {target}",
+    "yearConfirmHelp": "Ik heb het overzicht gecontroleerd en het rapport gaat over {target}.",
+    "yearCancel": "Jaarwijziging annuleren",
+    "continueWithGaps": "Verder met de huidige documenten",
+    "vatUploaded": "Pdf gevonden ? controleren en koppelen",
+    "yearEndRecords": "Controleer overige stukken voor dit bedrijf"
   }
 }

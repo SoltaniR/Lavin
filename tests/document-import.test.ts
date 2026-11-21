@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pdfInvoices, csvInvoices, ublInvoice } from "../src/lib/documents/invoices";
-import { normalizedBankAccount, pdfStatement } from "../src/lib/documents/bank-pdf";
+import { bankPdfPeriod, normalizedBankAccount, pdfStatement } from "../src/lib/documents/bank-pdf";
 import { vatFigures } from "../src/lib/documents/vat-pdf";
 import { convertInvoice, selectEcbRate } from "../src/lib/documents/exchange-rates";
 
@@ -73,6 +73,36 @@ test("the ECB conversion selects on or before the invoice date and rounds exactl
   const [ambiguous] = pdfInvoices([{ num: 1, text: "Invoice\nInvoice No. TEST-9\nInvoice date 2026-04-18\nVAT amount: $0.00\nTotal: $117.97" }]).invoices;
   assert.equal(ambiguous.foreign?.currency, undefined);
   assert.equal(ambiguous.foreign?.amount, "117.97");
+});
+
+test("invoice dates and currencies follow the printed invoice fields", () => {
+  const { invoices } = pdfInvoices([
+    { num: 1, text: "Invoice #AB-16\nInvoice Date: Friday, April 17th, 2026\nCard payment US$ 10.00\nVAT amount: € 0.00\nTotal €12.00" },
+    { num: 2, text: "Invoice #AB-17\nInvoice Date: 21st Sept 2026\nVAT amount: 0.00 GBP\nTotal £10.00" },
+    { num: 3, text: "Factuur\nFactuurnummer: CD-16\nDatum van afgifte: 17-04-2026\nBTW-bedrag: EUR 0.00\nFactuurtotaal: EUR 12.00" },
+  ]);
+  assert.deepEqual(invoices.map(f => [f.reference, f.date, f.foreign?.currency, f.amount ?? f.foreign?.amount]), [
+    ["AB-16", "2026-04-17", undefined, "12.00"],
+    ["AB-17", "2026-09-21", "GBP", "10.00"],
+    ["CD-16", "2026-04-17", undefined, "12.00"],
+  ]);
+});
+
+test("VAT period detection requires a complete quarter when only dates are printed", () => {
+  assert.deepEqual(vatFigures("Btw-aangifte\nTijdvak 01-04-2026 t/m 30-06-2026\n5b 0,00"),
+    { year: 2026, quarter: 2, input: "0", output: undefined });
+  assert.equal(vatFigures("Tijdvak 01-04-2026 t/m 30-05-2026").quarter, undefined);
+  assert.equal(vatFigures("Q1 2026\nTijdvak 01-04-2026 t/m 30-06-2026").quarter, undefined);
+});
+
+test("a bank PDF can provide a dated period even when movements cannot be reconciled", () => {
+  const numeric = "Statement of account\nPeriod\n01/04/2026 till 30/06/2026";
+  const timed = "EUR statement\n1 April 2026 [GMT+02:00] - 30 June 2026 [GMT+02:00]";
+  const period = { start: "2026-04-01", end: "2026-06-30" };
+  assert.deepEqual(bankPdfPeriod(numeric), period);
+  assert.deepEqual(bankPdfPeriod(timed), period);
+  assert.equal(pdfStatement(numeric), null);
+  assert.equal(pdfStatement(timed), null);
 });
 
 test("UBL and spreadsheet CSV preserve references, VAT and exact totals", () => {

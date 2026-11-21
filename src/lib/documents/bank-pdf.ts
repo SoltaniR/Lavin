@@ -1,10 +1,13 @@
 import Decimal from "decimal.js";
 import type { Statement } from "./mt940";
 import { labeled, sourceDate, sourceMoney } from "./fields";
+import { readPrintedDate } from "./invoice-text";
 
 const accountPattern = /\b([A-Z]{2}\s*\d{2}\s*[A-Z]{4}\s*(?:\d\s*){10})(?!\d)/gi;
 const datePattern = "(?:\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{4})";
-const period = new RegExp("^(?:period|periode|statement period|afschriftperiode)\\s*:?\\s*(" + datePattern + ")\\s*(?:t/m|tot|to|–|—|-)\\s*(" + datePattern + ")$", "i");
+const periodLabel = /^(?:period|periode|statement period|afschriftperiode)\b/i;
+const period = new RegExp("^(" + datePattern + ")\\s*(?:t/m|tot|to|through|until|till|–|—|-)\\s*(" + datePattern + ")$", "i");
+const timedPeriod = /^(\d{1,2} [\p{L}.]+ \d{4}) \[GMT[+-][\d:]+\]\s*[-–—]\s*(\d{1,2} [\p{L}.]+ \d{4}) \[GMT[+-][\d:]+\]$/iu;
 const movement = new RegExp("^(" + datePattern + ")\\s+(.+?)\\s+((?:(?:EUR|€)\\s*)?[+−-]?\\d[\\d., \\u00a0\\u202f]*[.,]\\d{2}(?:\\s*(?:CR|DR|CREDIT|DEBIT|BIJ|AF|EUR|€))?)$", "i");
 const debitCredit = new RegExp("^(" + datePattern + ")\\s+(.+?)\\s+(\\d+[.,]\\d{2}|[—-])\\s+(\\d+[.,]\\d{2}|[—-])$", "i");
 const dated = new RegExp("^" + datePattern + "\\s+");
@@ -15,20 +18,31 @@ export function normalizedBankAccount(account: string) {
     account.replace(/\s/g, "").toUpperCase();
 }
 
+export function bankPdfPeriod(text: string) {
+  const lines = text.split(/\r?\n/).filter(line => line.trim()).map(line => line.trim().replace(/\s+/g, " "));
+  const read = labeled(lines, periodLabel, value => {
+    const match = value.match(period);
+    const start = match && sourceDate(match[1]), end = match && sourceDate(match[2]);
+    return start && end && start <= end ? start + "/" + end : undefined;
+  }) ?? labeled(lines.slice(0, 30), /^EUR statement$/i, value => {
+    const match = value.match(timedPeriod);
+    const start = match && readPrintedDate(match[1]), end = match && readPrintedDate(match[2]);
+    return start && end && start <= end ? start + "/" + end : undefined;
+  });
+  if (!read) return undefined;
+  const [start, end] = read.split("/");
+  return { start, end };
+}
+
 export function pdfStatement(text: string): Statement | null {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   // Use labeled account lines. Other IBANs on the statement may be counterparties.
   const account = labeled(lines, /^(?:IBAN|rekeningnummer|account(?: number)?)\b/i, value =>
     value.match(accountPattern)?.[0] ? normalizedBankAccount(value.match(accountPattern)![0]) : undefined,
   );
-  const periods = new Set(lines.flatMap(line => {
-    const match = line.match(period);
-    const from = match && sourceDate(match[1]), to = match && sourceDate(match[2]);
-    return from && to ? [from + "/" + to] : [];
-  }));
-  const [openingDate, closingDate] = periods.size === 1 ? [...periods][0].split("/") : [];
-  const opening = labeled(lines, /^(?:opening balance|begin\s*saldo|vorig saldo|saldo vooraf)\b/i, sourceMoney);
-  const closing = labeled(lines, /^(?:closing balance|eind\s*saldo|nieuw saldo|saldo achteraf)\b/i, sourceMoney);
+  const { start: openingDate, end: closingDate } = bankPdfPeriod(text) ?? {};
+  const opening = labeled(lines, /^(?:opening balance|begin\s*saldo|vorig saldo|saldo vooraf)\b(?:\s*\(EUR\))?/i, sourceMoney);
+  const closing = labeled(lines, /^(?:closing balance|eind\s*saldo|nieuw saldo|saldo achteraf)\b(?:\s*\(EUR\))?/i, sourceMoney);
   if (!account || !openingDate || !closingDate || openingDate > closingDate || opening === undefined ||
     closing === undefined || !/\bEUR\b|€/.test(text) || otherCurrency.test(text)) return null;
 

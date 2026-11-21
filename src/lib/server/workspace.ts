@@ -15,6 +15,8 @@ import type {
   Workspace,
 } from "../model";
 import { DomainError } from "../accounting";
+import { reviewInvoiceDocuments } from "../documents/invoice-review";
+import { vatFigures } from "../documents/vat-pdf";
 
 export type SavedReport = Business & { trashed_at: string | null };
 
@@ -38,12 +40,15 @@ export async function currentBusiness(reportId?: string): Promise<Business | nul
   return result.rows[0] ?? null;
 }
 
-export async function writeActiveReport<T>(id: string, work: (tx: Transaction) => Promise<T>) {
+export async function writeActiveReport<T>(report: Pick<Business, "id" | "profile">, work: (tx: Transaction) => Promise<T>) {
   return (await db()).transaction(async tx => {
     // The same row is updated by Trash and Restore. A save either completes
     // before the report moves to Trash or sees that it is no longer active.
-    const active = await tx.query("select id from businesses where id=$1 and trashed_at is null for update", [id]);
-    if (!active.rows.length) throw new DomainError("reportUnavailable");
+    const { rows: [active] } = await tx.query<Pick<Business, "profile">>(
+      "select profile from businesses where id=$1 and trashed_at is null for update", [report.id],
+    );
+    if (!active) throw new DomainError("reportUnavailable");
+    if (active.profile.year !== report.profile.year) throw new DomainError("reportYearChanged");
     return work(tx);
   });
 }
@@ -61,7 +66,10 @@ export async function workspace(reportId?: string): Promise<Workspace | null> {
     connection.query<Document>(
       "select id,name,kind,status,left(text_content,12000) as text_content,sha256,created_at::text," +
       "metadata->>'purpose' as purpose,metadata->'vat' as vat_suggestion,metadata->'invoiceIssues' as invoice_issues," +
-      "metadata->'invoiceReadVersion' as invoice_read_version from documents where business_id=$1 order by created_at desc, id",
+      "metadata->'invoiceReadVersion' as invoice_read_version, " +
+      "case when metadata ? 'account' then jsonb_build_object('account',metadata->>'account'," +
+      "'start',metadata->>'openingDate','end',metadata->>'closingDate') end as statement_period " +
+      "from documents where business_id=$1 order by created_at desc, id",
       [business.id],
     ),
     connection.query<Journal>(
@@ -87,9 +95,11 @@ export async function workspace(reportId?: string): Promise<Workspace | null> {
       [business.id],
     ),
   ]);
+  const sources = documents.rows.map(d => d.purpose === "vat" && !d.vat_suggestion?.year
+    ? { ...d, vat_suggestion: vatFigures(d.text_content) } : d);
   return {
     business,
-    documents: documents.rows,
+    documents: reviewInvoiceDocuments(sources, invoiceDrafts.rows, business.profile.year),
     entries: entries.rows,
     bankRows: bankRows.rows,
     evidence: evidence.rows,

@@ -11,6 +11,7 @@ import { needBusiness, uuid, writeActiveReport } from "@/lib/server/workspace";
 import { requireAccess } from "@/lib/server/access";
 import {
   profileSchema,
+  reportingYearSchema,
   defaultProfile,
   requirements,
   isInvoicePurpose,
@@ -30,6 +31,8 @@ import { filedReturnSchema, isInvoiceOriginal } from "@/lib/vat";
 import { sourceDate } from "@/lib/documents/fields";
 import { exchangeCurrencies } from "@/lib/documents/exchange-rates";
 import { withExchangeRate } from "@/lib/server/invoice-exchange";
+import { correctReportYear, openInvoiceDrafts, pendingConversions, saveDraftFields } from "@/lib/server/report-year";
+import { supplierDateMatches } from "@/lib/report-intake";
 
 export type ActionState = { error?: string; success?: boolean };
 export type ReportTrashState = ActionState & {
@@ -108,7 +111,7 @@ export async function saveProfile(_: ActionState, form: FormData) {
       const business = await needBusiness();
       if (business.id !== existing) throw new DomainError("business");
       if (profile.year !== business.profile.year) throw new DomainError("year");
-      await writeActiveReport(business.id, tx => tx.query("update businesses set profile=$1 where id=$2", [
+      await writeActiveReport(business, tx => tx.query("update businesses set profile=$1 where id=$2", [
         JSON.stringify(profile),
         business.id,
       ]));
@@ -126,13 +129,31 @@ export async function saveProfile(_: ActionState, form: FormData) {
     }
   });
 }
+export async function changeReportYear(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form);
+    const previous = reportingYearSchema.parse(form.get("previousYear"));
+    const target = reportingYearSchema.parse(form.get("targetYear"));
+    if (b.profile.year !== previous) throw new DomainError("reportYearChanged");
+    if (target === previous || form.get("confirmYear") !== "on") throw new DomainError("validation");
+    await correctReportYear(b, target);
+  });
+}
+export async function retryInvoiceConversions(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form);
+    const changes = await pendingConversions(b);
+    if (!changes.length) throw new DomainError("invoiceExchangeUnavailable");
+    await writeActiveReport(b, tx => saveDraftFields(tx, b.id, changes));
+  });
+}
 export async function saveEntry(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form),
       input = entrySchema.parse(Object.fromEntries(form));
     const lines = buildLines(input, b.profile.year);
     const draftId = form.has("draftId") ? uuid(form.get("draftId")) : null;
-    await writeActiveReport(b.id, async tx => {
+    await writeActiveReport(b, async tx => {
       if (draftId) {
         if (input.kind !== "sale" && input.kind !== "purchase") throw new DomainError("validation");
         const { rows: [draft] } = await tx.query<{ document_id: string; fields: InvoiceFields; kind: string }>(
@@ -141,6 +162,7 @@ export async function saveEntry(_: ActionState, form: FormData) {
           [draftId, b.id],
         );
         if (!draft) throw new DomainError("draftDone");
+        if (draft.fields.date && !draft.fields.date.startsWith(b.profile.year + "-")) throw new DomainError("date");
         if (draft.fields.foreign && (!draft.fields.exchange ||
           input.date !== draft.fields.exchange.invoiceDate || !new Decimal(input.amount).eq(draft.fields.amount!))) {
           throw new DomainError("invoiceExchangeRequired");
@@ -178,18 +200,23 @@ export async function saveEntry(_: ActionState, form: FormData) {
 export async function updateInvoiceDetails(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form), id = uuid(form.get("draftId"));
-    const intent = z.enum(["confirmDate", "exchange"]).parse(form.get("intent"));
-    const { rows: [draft] } = await (await db()).query<{ document_id: string; fields: InvoiceFields }>(
-      "select document_id,fields from invoice_drafts where business_id=$1 and id=$2 and posted_entry is null and not dismissed",
-      [b.id, id],
-    );
+    const intent = z.enum(["confirmDate", "setDate", "exchange"]).parse(form.get("intent"));
+    const applyMatching = intent === "confirmDate" && form.get("applyMatching") === "on";
+    const open = await openInvoiceDrafts(b, applyMatching ? undefined : id);
+    const draft = open.find(item => item.id === id);
     if (!draft) throw new DomainError("draftDone");
     const prior = draft.fields;
     const suggestion = prior.dateSuggestion;
     let updated: InvoiceFields;
     if (intent === "confirmDate") {
       if (!suggestion || prior.date) throw new DomainError("invoiceDraftChanged");
-      updated = { ...prior, date: suggestion.date };
+      updated = { ...prior, date: suggestion.date, dateConfirmed: true };
+    } else if (intent === "setDate") {
+      const date = sourceDate(z.string().parse(form.get("invoiceDate")));
+      updated = { ...prior, date, dateConfirmed: true };
+      if (date !== prior.date && prior.foreign) {
+        updated = { ...updated, amount: undefined, invoiceVat: undefined, exchange: undefined };
+      }
     } else {
       if (!prior.foreign) throw new DomainError("invoiceDraftChanged");
       const currency = z.enum(exchangeCurrencies).parse(form.get("currency"));
@@ -199,21 +226,24 @@ export async function updateInvoiceDetails(_: ActionState, form: FormData) {
         throw new DomainError("amount");
       }
       updated = {
-        ...prior, date: sourceDate(z.string().parse(form.get("invoiceDate"))),
+        ...prior, date: sourceDate(z.string().parse(form.get("invoiceDate"))), dateConfirmed: true,
         foreign: { currency, amount: originalAmount, vat: originalVat },
-        amount: undefined, invoiceVat: undefined, exchange: undefined,
+        amount: undefined, invoiceVat: undefined, exchange: undefined, exchangeConfirmed: true,
       };
     }
     if (!updated.date?.startsWith(b.profile.year + "-")) throw new DomainError("date");
     if (updated.foreign) updated = await withExchangeRate(updated, b.profile.year);
     if (intent === "exchange" && !updated.exchange) throw new DomainError("invoiceExchangeUnavailable");
-    await writeActiveReport(b.id, async tx => {
-      const saved = await tx.query(
-        "update invoice_drafts set fields=$1::jsonb where business_id=$2 and id=$3 and fields=$4::jsonb " +
-        "and posted_entry is null and not dismissed returning id",
-        [JSON.stringify(updated), b.id, id, JSON.stringify(prior)],
-      );
-      if (!saved.rows.length) throw new DomainError("invoiceDraftChanged");
+    const matching = applyMatching ? supplierDateMatches(open, draft, b.profile.year) : [];
+    if (applyMatching &&
+      matching.map(item => item.id).sort().join(",") !== form.get("matchingDraftIds")) throw new DomainError("invoiceDraftChanged");
+    const batch = await Promise.all(matching.map(async draft => {
+      const fields = { ...draft.fields, date: draft.fields.dateSuggestion!.date, dateConfirmed: true };
+      return { draft, fields: fields.foreign ? await withExchangeRate(fields, b.profile.year) : fields };
+    }));
+    await writeActiveReport(b, async tx => {
+      if (!await saveDraftFields(tx, b.id, [{ draft, fields: updated }])) throw new DomainError("invoiceDraftChanged");
+      if (await saveDraftFields(tx, b.id, batch) !== batch.length) throw new DomainError("invoiceDraftChanged");
       if (intent === "confirmDate" && form.get("remember") === "on" && suggestion?.supplier) {
         await tx.query(
           "insert into invoice_date_rules(supplier_key,date_label) values($1,$2) " +
@@ -221,33 +251,13 @@ export async function updateInvoiceDetails(_: ActionState, form: FormData) {
           [suggestion.supplier.key, suggestion.label],
         );
       }
-      const { rows } = await tx.query<{ fields: InvoiceFields }>(
-        "select fields from invoice_drafts where document_id=$1 and business_id=$2 and not dismissed",
-        [draft.document_id, b.id],
-      );
-      const stillMissing = rows.some(({ fields }) => !fields.date || !fields.reference ||
-        (fields.foreign ? !fields.foreign.amount || fields.foreign.vat === undefined
-          : !fields.amount || fields.invoiceVat === undefined));
-      const waitingForRate = rows.some(({ fields }) => fields.foreign && !fields.exchange);
-      await tx.query(
-        "update documents set metadata=jsonb_set(metadata,'{invoiceIssues}', " +
-        "coalesce((select jsonb_agg(issue) from jsonb_array_elements_text(metadata->'invoiceIssues') issue " +
-        "where (issue<>'missingFields' or $3) and (issue<>'fxPending' or $4)), '[]'::jsonb)) " +
-        "where id=$1 and business_id=$2",
-        [draft.document_id, b.id, stillMissing, waitingForRate],
-      );
-      await tx.query(
-        "update documents set status='invoiceReady' where id=$1 and business_id=$2 and status='invoicePartial' " +
-        "and metadata->'invoiceIssues'='[]'::jsonb",
-        [draft.document_id, b.id],
-      );
     });
   });
 }
 export async function dismissInvoice(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form), draft = uuid(form.get("draftId"));
-    const updated = await writeActiveReport(b.id, tx => tx.query(
+    const updated = await writeActiveReport(b, tx => tx.query(
       "update invoice_drafts set dismissed=true where business_id=$1 and id=$2 and posted_entry is null and not dismissed returning id",
       [b.id, draft],
     ));
@@ -261,7 +271,7 @@ export async function saveEvidence(_: ActionState, form: FormData) {
     if (!requirements(b.profile).includes(requirement))
       throw new DomainError("validation");
     const note = z.string().trim().min(5).max(2000).parse(form.get("note"));
-    await writeActiveReport(b.id, tx => tx.query(
+    await writeActiveReport(b, tx => tx.query(
       `insert into evidence(business_id,requirement,note) values($1,$2,$3)
       on conflict(business_id,requirement) do update set note=$3,updated_at=now()`,
       [b.id, requirement, note],
@@ -272,7 +282,7 @@ export async function saveVatReturn(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form);
     const filed = filedReturnSchema.parse(Object.fromEntries(form));
-    await writeActiveReport(b.id, async tx => {
+    await writeActiveReport(b, async tx => {
       const { rows: [source] } = await tx.query<{ purpose: string | null; text_content: string }>(
         "select metadata->>'purpose' as purpose,text_content from documents where business_id=$1 and id=$2 and kind='pdf'",
         [b.id, filed.sourceId],
@@ -329,7 +339,7 @@ export async function changeDocumentCategory(_: ActionState, form: FormData) {
 export async function removeDocument(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form);
-    await deleteUnusedDocument(b.id, uuid(form.get("documentId")));
+    await deleteUnusedDocument(b, uuid(form.get("documentId")));
   });
 }
 export async function postBankRow(_: ActionState, form: FormData) {
@@ -338,7 +348,7 @@ export async function postBankRow(_: ActionState, form: FormData) {
       id = uuid(form.get("rowId")),
       counterpart = z.string().parse(form.get("account"));
     if (counterpart === "bank") throw new DomainError("account");
-    await writeActiveReport(b.id, async tx => {
+    await writeActiveReport(b, async tx => {
       const row = (
         await tx.query<{
           booking_date: string;
