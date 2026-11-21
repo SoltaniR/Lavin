@@ -94,6 +94,12 @@ test("fractional cent artifacts do not enter the ledger", () => {
   assert.equal(f.difference, "0.00");
   assert.throws(() => entrySchema.parse(input({ amount: "0.001" })));
 });
+test("entry amounts accept a Dutch decimal comma without accepting thousands separators", () => {
+  const entry = entrySchema.parse(input({ amount: "121,25", vat: "21,25" }));
+  assert.equal(financials([journal(entry)]).revenue, "100.00");
+  for (const amount of ["1.234,56", "1,234", "12,3456", "1 234,56"])
+    assert.throws(() => entrySchema.parse(input({ amount })));
+});
 test("invalid dates, years, amounts and opening profit accounts are rejected", () => {
   for (const change of [
     { date: "2025-02-30" },

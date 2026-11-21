@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const config: NextConfig = {
-  serverExternalPackages: ["@electric-sql/pglite", "pdf-parse"],
+  serverExternalPackages: ["@electric-sql/pglite", "pdf-parse", "tesseract.js"],
   experimental: { serverActions: { bodySizeLimit: "22mb" } },
   async headers() {
     return [

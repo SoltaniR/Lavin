@@ -7,6 +7,8 @@ import { ReportHome } from "@/components/report-home";
 import { CompanyPicker } from "@/components/company-picker";
 import { ReportSteps, ReportNext } from "@/components/report-steps";
 import { VatReview } from "@/components/vat-review";
+import { DocumentManagement, UploadForm } from "@/components/document-upload";
+import { InvoiceReview } from "@/components/invoice-review";
 import Decimal from "decimal.js";
 import { Suspense } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -21,15 +23,14 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { businesses, workspace } from "@/lib/server/workspace";
-import { requirements } from "@/lib/model";
-import { quarterSchema } from "@/lib/vat";
+import { requirements, uploadPurposes } from "@/lib/model";
+import { quarters, quarterSchema } from "@/lib/vat";
 import { financials, readiness } from "@/lib/accounting";
 import { setLocale } from "./actions";
 import { Navigation } from "@/components/navigation";
 import {
   ProfileForm,
   EntryForm,
-  UploadForm,
   EvidenceForm,
   BankForm,
   PrintButton,
@@ -59,6 +60,14 @@ export default async function Page({
   ]);
   if (companyView && !w) redirect("/?view=companies");
   const p = w?.business.profile;
+  const pendingDrafts = w?.invoiceDrafts?.filter(draft => !draft.posted_entry).length ?? 0;
+  const bankIssues = w?.documents.filter(document => document.purpose === "bank" && ["bankPdfReview", "needsOcr"].includes(document.status)).length ?? 0;
+  const uploadPurpose = uploadPurposes.find(purpose => purpose === params.kind);
+  const postedDocuments = view === "documents" && w ? new Set([
+    ...w.entries.map(entry => entry.source_id),
+    ...w.bankRows.filter(row => row.posted_entry).map(row => row.document_id),
+    ...(w.invoiceDrafts ?? []).filter(draft => draft.posted_entry).map(draft => draft.document_id),
+  ]) : undefined;
   const money = (v: string) =>
     new Intl.NumberFormat(locale === "nl" ? "nl-NL" : "en-GB", {
       style: "currency",
@@ -292,16 +301,33 @@ export default async function Page({
               <div className="content-split">
                 <section className="panel">
                   <h2>{t("documents.upload")}</h2>
-                  <UploadForm businessId={w.business.id} />
+                  <UploadForm key={uploadPurpose ?? "auto"} businessId={w.business.id} initial={uploadPurpose} />
                   <p className="help">{t("documents.capability")}</p>
+                  <a className="text-link" download="lavin-invoices.csv"
+                    href="data:text/csv;charset=utf-8,reference%3Bdate%3Btotal%3Bvat%3Bdescription%0D%0A">
+                    {t("imports.csvTemplate")}
+                  </a>
                 </section>
                 <aside className="side-note">
                   <FolderOpen size={30} />
-                  <h3>{t("documents.count", { count: w.documents.length })}</h3>
+                  <h3 aria-live="polite">{t("documents.count", { count: w.documents.length })}</h3>
                   <p>{t("documents.textNote")}</p>
                   <h3>{t("documents.gather")}</h3>
                   <p>{t("documents.gatherHelp")}</p>
-                  <Link className="text-link" href="/?view=vat">{t("nav.vat")}</Link>
+                  <ul className="import-links">
+                    <li><Link className="text-link" href="/?view=review#invoice-review">{t("imports.openReview")}</Link></li>
+                    <li><Link className="text-link" href="/?view=review#bank-imports">{t("review.bank")}</Link></li>
+                  </ul>
+                  <h3 id="return-periods">{t("imports.vatReturns")}</h3>
+                  {p?.vatScope === "ordinaryQuarterly" ? <ul className="import-quarters">
+                    {quarters.map(quarter => <li key={quarter}>
+                      <Link className="text-link" href={"/?view=vat&quarter=" + quarter}>
+                        {t("vat.period", { quarter, year: p.year })}
+                      </Link>
+                      <span className="muted">{t(w.vatReturns.some(filed => filed.quarter === quarter) ? "imports.linked" : "imports.awaitingReturn")}</span>
+                    </li>)}
+                  </ul> : <Link className="text-link" href="/?view=vat">{t("nav.vat")}</Link>}
+                  <p className="help">{t("imports.missingQuarterHelp")}</p>
                 </aside>
               </div>
               <div className="document-list">
@@ -313,12 +339,14 @@ export default async function Page({
                   </div>
                 ) : (
                   w.documents.map((d) => (
-                    <details className="panel document" key={d.id}>
+                    <details className="panel document" key={d.id} id={"document-" + d.id}>
                       <summary>
                         <FileText size={22} />
                         <span>
                           <strong>{d.name}</strong>
-                          <small>{t(`documents.${d.status}`)}</small>
+                          <small>{t("imports.purpose." + (d.purpose ?? (d.kind === "mt940" ? "bank" : "unclassified")))}{" · "}
+                            <span>{t(`documents.${d.status}`)}</span>
+                          </small>
                         </span>
                         <span className="badge">{d.kind.toUpperCase()}</span>
                       </summary>
@@ -332,11 +360,19 @@ export default async function Page({
                           {t("documents.view")}
                           <ArrowUpRight size={15} />
                         </a>
+                        <DocumentManagement businessId={w.business.id} document={{ id: d.id, kind: d.kind, purpose: d.purpose }}
+                          posted={postedDocuments?.has(d.id) ?? false}
+                          quarter={w.vatReturns.find(filed => filed.source_id === d.id)?.quarter} />
                         <h3>{t("documents.preview")}</h3>
                         <pre>
                           {d.text_content.slice(0, 12000) ||
                             t("documents.noText")}
                         </pre>
+                        {d.purpose === "bank" && d.status === "bankPdfReview" && <p className="notice">{t("imports.bankPdfHelp")}</p>}
+                        {d.status === "needsOcr" && <p className="notice">{t("imports.scanHelp")}</p>}
+                        {d.invoice_issues?.map(issue => <p className="help" key={issue}>{t("imports.invoiceIssue." + issue)}</p>)}
+                        {d.purpose === "vat" && <Link className="text-link" href={"/?view=vat&quarter=" + (d.vat_suggestion?.quarter ?? 1) + "&source=" + d.id}>{t("imports.openVat")}</Link>}
+                        {(d.status === "invoiceReady" || d.status === "invoicePartial") && <Link className="text-link" href="/?view=review#invoice-review">{t("imports.openReview")}</Link>}
                       </div>
                     </details>
                   ))
@@ -347,9 +383,11 @@ export default async function Page({
           {w && view === "review" && (
             <>
               {title("review")}
+              <InvoiceReview workspace={w} locale={locale} selectedId={params.draft}
+                page={/^\d+$/.test(params.draftPage ?? "") ? Number(params.draftPage) : 1} />
               <details
                 className="panel entry-panel"
-                open
+                open={!pendingDrafts}
               >
                 <summary>
                   <Plus size={18} />
@@ -357,12 +395,13 @@ export default async function Page({
                 </summary>
                 <EntryForm businessId={w.business.id} profile={p!} documents={w.documents.map(({ id, name }) => ({ id, name }))} />
               </details>
-              <section className="panel">
+              <section className="panel" id="bank-imports">
                 <div className="section-heading">
                   <h2>{t("review.bank")}</h2>
-                  <span className="badge blue">{unposted.length}</span>
+                  <Link className="text-link" href="/?view=documents&kind=bank">{t("imports.uploadBank")}</Link>
                 </div>
                 <p className="help">{t("review.bankHelp")}</p>
+                {bankIssues > 0 && <p className="notice">{t("imports.bankIssueCount", { count: bankIssues })}</p>}
                 {w.bankRows.length ? (
                   <div className="bank-list">
                     {w.bankRows.map((r) => (
@@ -371,6 +410,8 @@ export default async function Page({
                           <small>{date(r.booking_date)}</small>
                           <strong>{r.description}</strong>
                           <span className="numeric">{money(r.amount)}</span>
+                          <a className="source-link" href={"/api/documents/" + r.document_id}
+                            target="_blank" rel="noreferrer">{t("common.source")}</a>
                         </div>
                         {r.posted_entry ? (
                           <span className="badge green">
@@ -378,7 +419,7 @@ export default async function Page({
                             {t("review.posted")}
                           </span>
                         ) : (
-                          <BankForm row={r} />
+                          <BankForm row={r} businessId={w.business.id} />
                         )}
                       </div>
                     ))}
@@ -454,7 +495,7 @@ export default async function Page({
             </>
           )}
           {w && view === "vat" && (
-            <VatReview workspace={w} quarter={quarterSchema.safeParse(params.quarter).data ?? 1} locale={locale} />
+            <VatReview workspace={w} quarter={quarterSchema.safeParse(params.quarter).data ?? 1} locale={locale} selectedSource={params.source} />
           )}
           {w && view === "yearend" && (
             <>
@@ -510,7 +551,7 @@ export default async function Page({
                   </button>
                 </form>
                 <div>
-                  <a className="button secondary" href="/api/export">
+                  <a className="button secondary" href={`/api/export?reportId=${w.business.id}`}>
                     {t("report.csv")}
                   </a>
                   <PrintButton />
@@ -527,6 +568,12 @@ export default async function Page({
                   ).map((k) => (
                     <li key={k}>{t(`report.${k}`)}</li>
                   ))}
+                  {pendingDrafts > 0 && <li><Link className="guide-link" href="/?view=review#invoice-review">
+                    {t("imports.draftWarning", { count: pendingDrafts })}</Link></li>}
+                  {bankIssues > 0 && <li><Link className="guide-link" href="/?view=review#bank-imports">
+                    {t("imports.bankIssueCount", { count: bankIssues })}</Link></li>}
+                  {p?.vatScope === "ordinaryQuarterly" && w.vatReturns.length < quarters.length &&
+                    <li>{t("imports.vatGapCount", { count: quarters.length - w.vatReturns.length })}</li>}
                   <li><Link className="guide-link" href="/?view=vat">{t("report.vatReview")}</Link></li>
                 </ul>
               </aside>

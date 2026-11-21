@@ -50,13 +50,15 @@ async (page) => {
   await row(firstName).getByRole('button', { name: 'View figures', exact: true }).click();
   await page.waitForURL(origin + '/?view=report');
   await page.locator('.report-paper').getByRole('heading', { name: firstName, exact: true }).waitFor();
+  const csvLink = await page.locator('.report-toolbar a[href^="/api/export"]').getAttribute('href');
   const [selection] = await page.context().cookies(origin).then(cookies => cookies.filter(c => c.name === 'business'));
-  if (!selection || !source) throw new Error('Missing report selection or source');
+  if (!selection || !source || !csvLink) throw new Error('Missing report selection, source or CSV link');
 
   const earlierTab = await page.context().newPage();
   await earlierTab.goto(origin + '/?view=review');
   await earlierTab.getByLabel('Description', { exact: true }).fill('Stale save must fail');
   await earlierTab.getByLabel('Total amount, including VAT').fill('100');
+  await earlierTab.getByLabel('VAT amount shown').fill('0');
   await page.goto(saved);
   await row(firstName).getByRole('button', { name: 'Delete', exact: true }).click();
   await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
@@ -72,6 +74,7 @@ async (page) => {
   await page.context().addCookies([selection]);
   if ((await page.request.get(origin + source)).ok()) throw new Error('Trashed report document was downloadable');
   if ((await page.request.get(origin + '/api/export')).ok()) throw new Error('Trashed report CSV was downloadable');
+  if ((await page.request.get(origin + csvLink)).ok()) throw new Error('The report-specific CSV link bypassed Trash');
   await earlierTab.getByRole('button', { name: 'Record entry', exact: true }).click();
   await Promise.race([
     earlierTab.waitForURL(saved),

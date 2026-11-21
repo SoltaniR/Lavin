@@ -890,6 +890,30 @@ textarea {
   flex-direction: column;
   gap: 12px;
 }
+.import-upload fieldset { display: grid; gap: 12px; }
+.import-upload fieldset > .button { justify-self: start; }
+.import-results, .import-links, .import-quarters, .import-draft-list { list-style: none; margin: 12px 0; padding: 0; }
+.import-results li { overflow-wrap: anywhere; }
+.import-links { display: grid; gap: 6px; }
+.import-quarters li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; }
+.import-review, #bank-imports, #draft-fields, #return-periods { scroll-margin-top: 80px; }
+.import-review { margin-bottom: 20px; }
+.import-draft { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 16px; border-top: 1px solid var(--line); margin-top: 16px; padding-top: 16px; }
+.import-draft a, .import-draft-list strong, .import-draft-list small { overflow-wrap: anywhere; }
+.import-draft-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.import-draft-list small { display: block; color: var(--muted); }
+.import-duplicate { margin: 12px 0; }
+.import-duplicate summary { cursor: pointer; }
+.import-full-vat { justify-self: start; margin-top: 6px; }
+.import-pagination { display: flex; gap: 14px; }
+.import-reread { margin: 12px 0; }
+.import-review details.notice summary { cursor: pointer; }
+.import-review details.notice li { margin-top: 6px; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .import-draft { grid-template-columns: minmax(0, 1fr); }
+  .import-draft-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .import-draft-list li .button { grid-column: 1 / -1; justify-self: start; }
+}
 .empty-state {
   padding: 45px;
   text-align: center;
@@ -946,6 +970,22 @@ details[open] > summary:after {
 .document-body h3 {
   margin-top: 20px;
 }
+.document-management {
+  display: grid;
+  align-items: start;
+  justify-items: start;
+  gap: 12px;
+  margin: 16px 0;
+}
+.document-category fieldset, .document-remove fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 10px;
+}
+.document-delete-prompt p { margin-bottom: 10px; }
+.document-remove .button.primary { background: #b42318; }
+.document-remove .button.primary:hover { background: #922018; }
 .document-body pre {
   font-size: 12px;
   white-space: pre-wrap;

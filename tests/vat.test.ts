@@ -5,6 +5,7 @@ import { defaultProfile, type Journal, type Workspace } from "../src/lib/model";
 import { filedReturnSchema, quarterlyVat } from "../src/lib/vat";
 
 const source = "00000000-0000-4000-8000-000000000001";
+const returnSource = "00000000-0000-4000-8000-000000000002";
 function journal(fields: Partial<EntryInput>): Journal {
   const input: EntryInput = {
     date: "2025-03-31", description: "Practice invoice", kind: "sale", amount: "121.05",
@@ -21,9 +22,11 @@ function example(): Workspace {
       journal({ date: "2025-04-01", vat: "90" }),
       journal({ kind: "opening", vat: "0", debit: "bank", credit: "vatOutput" }),
       journal({ kind: "payment", vat: "0", debit: "bank", credit: "receivables" })],
-    documents: [{ id: source, kind: "pdf", name: "invoice.pdf", status: "textReady", sha256: "", text_content: "", created_at: "" }],
+    documents: [[source, "invoice.pdf"], [returnSource, "filed-return.pdf"]].map(([id, name]) => ({
+      id, name, kind: "pdf", status: "textReady", sha256: "", text_content: "", created_at: "",
+    })),
     bankRows: [], evidence: [],
-    vatReturns: [{ quarter: 1, source_id: source, filed_output: "21", filed_input: "11", note: "" }],
+    vatReturns: [{ quarter: 1, source_id: returnSource, filed_output: "21", filed_input: "11", note: "" }],
   };
 }
 
@@ -37,6 +40,28 @@ test("VAT comparison isolates quarters, excludes settlements and preserves round
   assert.equal(first.invoices.length, 2);
   assert.equal(quarterlyVat(workspace, 2).rows[0].booked, "90.00");
   assert.equal(quarterlyVat(workspace, 2).status, "missingReturn");
+});
+
+test("filed return PDFs cannot count as invoice evidence or support two quarters", () => {
+  const workspace = example();
+  workspace.vatReturns.push({ ...workspace.vatReturns[0], quarter: 2 });
+  workspace.entries = [journal({ sourceId: returnSource, vat: "21" })];
+  const first = quarterlyVat(workspace, 1);
+  assert.equal(first.duplicateSource, true);
+  assert.equal(first.status, "needsReview");
+  assert.equal(first.rows[0].difference, null);
+  assert.equal(first.missingSources, 1);
+  assert.equal(quarterlyVat(workspace, 2).duplicateSource, true);
+});
+
+test("only the entered deductible part of purchase VAT contributes to box 5b", () => {
+  const workspace = example();
+  const purchase = journal({ kind: "purchase", amount: "121", vat: "10" });
+  const nonDeductible = journal({ kind: "purchase", amount: "21", vat: "0" });
+  workspace.entries = [purchase, nonDeductible];
+  assert.equal(quarterlyVat(workspace, 1).rows[1].booked, "10.00");
+  assert.equal(purchase.lines.find(line => line.account === "otherCosts")?.debit, "111.00");
+  assert.equal(nonDeductible.lines.find(line => line.account === "otherCosts")?.debit, "21.00");
 });
 
 test("VAT comparison flags unsupported methods, missing evidence and other transactions", () => {

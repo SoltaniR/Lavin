@@ -1,9 +1,10 @@
 import { workspace } from "@/lib/server/workspace";
 const cell = (value: string) =>
   `"${(/^[=+\-@\t\r]/.test(value) ? "'" : "") + value.replaceAll('"', '""')}"`;
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const w = await workspace();
+    const reportId = new URL(request.url).searchParams.get("reportId");
+    const w = await workspace(reportId ?? undefined);
     if (!w) return new Response(null, { status: 404 });
     const rows = [
       [

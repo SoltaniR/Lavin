@@ -1,5 +1,6 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 
 export const SESSION_SECONDS = 8 * 60 * 60;
@@ -46,6 +47,21 @@ export function validRequestOrigin(
 }
 
 type State = { attempts: number[]; sessions: { hash: string; expires: number; credential: string }[] };
+
+async function replaceSessionFile(temporary: string, destination: string) {
+  for (let wait = 10; ; wait *= 2) {
+    try {
+      await rename(temporary, destination);
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      // Windows can briefly lock either file. Keep the replacement atomic.
+      if (process.platform !== "win32" || wait > 160 || !["EPERM", "EACCES", "EBUSY"].includes(code ?? "")) throw error;
+      await delay(wait);
+    }
+  }
+}
+
 // One Node process and persistent disk, matching the embedded database. Serialize
 // read/modify/write so concurrent logins cannot lose revocations or skip limits.
 export class PreviewSessions {
@@ -62,7 +78,7 @@ export class PreviewSessions {
       const result = await work(state);
       await mkdir(path.dirname(this.file), { recursive: true });
       await writeFile(`${this.file}.tmp`, JSON.stringify(state), { mode: 0o600 });
-      await rename(`${this.file}.tmp`, this.file);
+      await replaceSessionFile(`${this.file}.tmp`, this.file);
       return result;
     });
     this.queue = next.catch(() => {});

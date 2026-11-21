@@ -51,14 +51,42 @@ export type Journal = {
   lines: Line[];
   source_id: string | null;
 };
+export const uploadPurposes = ["auto", "sale", "purchase", "bank", "vat", "evidence"] as const;
+export type DocumentPurpose = Exclude<(typeof uploadPurposes)[number], "auto"> | "invoice";
+export const isInvoicePurpose = (value: unknown): value is "sale" | "purchase" | "invoice" =>
+  value === "sale" || value === "purchase" || value === "invoice";
+export const invoiceReadVersion = 2;
+export type InvoiceIssue = "unreadable" | "layout" | "missingFields" | "totalsConflict" | "nonEur" | "special";
+export type InvoiceFields = {
+  reference?: string;
+  date?: string;
+  amount?: string;
+  invoiceVat?: string;
+  description?: string;
+  page?: number;
+  lastPage?: number;
+  row?: number;
+};
+export type InvoiceDraft = {
+  id: string;
+  document_id: string;
+  direction: "sale" | "purchase" | null;
+  fields: InvoiceFields;
+  posted_entry: string | null;
+};
+export type VatSuggestion = { quarter?: number; year?: number; output?: string; input?: string };
 export type Document = {
   id: string;
   name: string;
-  kind: "pdf" | "mt940";
+  kind: "pdf" | "mt940" | "xml" | "csv";
   status: string;
   text_content: string;
   sha256: string;
   created_at: string;
+  purpose?: DocumentPurpose;
+  vat_suggestion?: VatSuggestion;
+  invoice_issues?: InvoiceIssue[];
+  invoice_read_version?: number;
 };
 export type BankRow = {
   id: string;
@@ -84,6 +112,7 @@ export type Workspace = {
   bankRows: BankRow[];
   evidence: Evidence[];
   vatReturns: VatReturn[];
+  invoiceDrafts?: InvoiceDraft[];
 };
 
 export const defaultProfile: Profile = {

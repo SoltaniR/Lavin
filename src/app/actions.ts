@@ -1,8 +1,8 @@
 "use server";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { randomUUID, createHash } from "node:crypto";
-import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import Decimal from "decimal.js";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import {
   profileSchema,
   defaultProfile,
   requirements,
+  isInvoicePurpose,
   type Profile,
 } from "@/lib/model";
 import {
@@ -21,8 +22,9 @@ import {
   DomainError,
   type EntryInput,
 } from "@/lib/accounting";
-import { parseMt940 } from "@/lib/documents/mt940";
-import { filedReturnSchema } from "@/lib/vat";
+import { deleteUnusedDocument, importDocument, maxUploadBytes, purposeSchema } from "@/lib/server/imports";
+import { vatFigures } from "@/lib/documents/vat-pdf";
+import { filedReturnSchema, isInvoiceOriginal } from "@/lib/vat";
 
 export type ActionState = { error?: string; success?: boolean };
 export type ReportTrashState = ActionState & {
@@ -124,16 +126,54 @@ export async function saveEntry(_: ActionState, form: FormData) {
     const b = await needBusiness(form),
       input = entrySchema.parse(Object.fromEntries(form));
     const lines = buildLines(input, b.profile.year);
-    await writeActiveReport(b.id, tx => tx.query("select post_entry($1,$2,$3,$4,$5,$6,$7,$8)", [
-      randomUUID(),
-      b.id,
-      input.date,
-      input.description,
-      input.kind,
-      input.requestKey,
-      input.sourceId || null,
-      JSON.stringify(lines),
-    ]));
+    const draftId = form.has("draftId") ? uuid(form.get("draftId")) : null;
+    await writeActiveReport(b.id, async tx => {
+      if (draftId) {
+        if (input.kind !== "sale" && input.kind !== "purchase") throw new DomainError("validation");
+        const { rows: [draft] } = await tx.query<{ document_id: string; reference: string | null; kind: string }>(
+          "select d.document_id,d.fields->>'reference' as reference,o.kind from invoice_drafts d join documents o on o.id=d.document_id " +
+          "where d.id=$1 and d.business_id=$2 and d.posted_entry is null and not d.dismissed",
+          [draftId, b.id],
+        );
+        if (!draft) throw new DomainError("draftDone");
+        if (draft.document_id !== input.sourceId) {
+          if (draft.kind !== "csv") throw new DomainError("sourceUsed");
+          const { rows: [original] } = await tx.query<Parameters<typeof isInvoiceOriginal>[0]>(
+            "select d.kind,d.metadata->>'purpose' as purpose from documents d where d.id=$1 and d.business_id=$2 " +
+            "and not exists (select 1 from vat_returns v where v.business_id=$2 and v.source_id=d.id)",
+            [input.sourceId || null, b.id],
+          );
+          if (!original || !isInvoiceOriginal(original)) throw new DomainError("sourceUsed");
+        }
+        if (draft.reference && !form.has("confirmDuplicate")) {
+          const existing = await tx.query(
+            "select 1 from invoice_drafts d join entries e on e.id=d.posted_entry " +
+            "where d.business_id=$1 and d.direction=$2 and lower(d.fields->>'reference')=lower($3) " +
+            "and e.entry_date=$4 and (select max(greatest(debit,credit)) from lines where entry_id=e.id)=$5::numeric limit 1",
+            [b.id, input.kind, draft.reference, input.date, input.amount],
+          );
+          if (existing.rows.length) throw new DomainError("invoiceDuplicate");
+        }
+      }
+      const { rows: [entry] } = await tx.query<{ post_entry: string }>("select post_entry($1,$2,$3,$4,$5,$6,$7,$8)", [
+        randomUUID(), b.id, input.date, input.description, input.kind, draftId ?? input.requestKey,
+        input.sourceId || null, JSON.stringify(lines),
+      ]);
+      if (draftId) await tx.query(
+        "update invoice_drafts set posted_entry=$1,direction=$2 where id=$3 and business_id=$4",
+        [entry.post_entry, input.kind, draftId, b.id],
+      );
+    });
+  });
+}
+export async function dismissInvoice(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form), draft = uuid(form.get("draftId"));
+    const updated = await writeActiveReport(b.id, tx => tx.query(
+      "update invoice_drafts set dismissed=true where business_id=$1 and id=$2 and posted_entry is null and not dismissed returning id",
+      [b.id, draft],
+    ));
+    if (!updated.rows.length) throw new DomainError("draftDone");
   });
 }
 export async function saveEvidence(_: ActionState, form: FormData) {
@@ -154,140 +194,69 @@ export async function saveVatReturn(_: ActionState, form: FormData) {
   return run(async () => {
     const b = await needBusiness(form);
     const filed = filedReturnSchema.parse(Object.fromEntries(form));
-    const saved = await writeActiveReport(b.id, tx => tx.query(
-      `insert into vat_returns(business_id,quarter,source_id,filed_output,filed_input,note)
-       select business_id,$2::smallint,id,$4::bigint,$5::bigint,$6 from documents where business_id=$1 and id=$3 and kind='pdf'
-       on conflict(business_id,quarter) do update set
-         source_id=excluded.source_id,filed_output=excluded.filed_output,
-         filed_input=excluded.filed_input,note=excluded.note,updated_at=now()
-       returning quarter`,
-      [b.id, filed.quarter, filed.sourceId, filed.filedOutput, filed.filedInput, filed.note],
-    ));
-    if (!saved.rows.length) throw new DomainError("vatSource");
+    await writeActiveReport(b.id, async tx => {
+      const { rows: [source] } = await tx.query<{ purpose: string | null; text_content: string }>(
+        "select metadata->>'purpose' as purpose,text_content from documents where business_id=$1 and id=$2 and kind='pdf'",
+        [b.id, filed.sourceId],
+      );
+      if (!source || (source.purpose && source.purpose !== "vat" && source.purpose !== "evidence")) throw new DomainError("vatSource");
+      const otherPeriod = await tx.query(
+        "select quarter from vat_returns where business_id=$1 and source_id=$2 and quarter<>$3",
+        [b.id, filed.sourceId, filed.quarter],
+      );
+      if (otherPeriod.rows.length) throw new DomainError("vatSourcePeriod");
+      const { quarter, year } = vatFigures(source.text_content);
+      if ((year && year !== b.profile.year) || (quarter && quarter !== filed.quarter)) throw new DomainError("vatWrongPeriod");
+      const saved = await tx.query(
+        `insert into vat_returns(business_id,quarter,source_id,filed_output,filed_input,note)
+         select business_id,$2::smallint,id,$4::bigint,$5::bigint,$6 from documents where business_id=$1 and id=$3 and kind='pdf'
+         on conflict(business_id,quarter) do update set
+           source_id=excluded.source_id,filed_output=excluded.filed_output,
+           filed_input=excluded.filed_input,note=excluded.note,updated_at=now()
+         returning quarter`,
+        [b.id, filed.quarter, filed.sourceId, filed.filedOutput, filed.filedInput, filed.note],
+      );
+      if (!saved.rows.length) throw new DomainError("vatSource");
+    });
   });
 }
 export async function uploadDocument(_: ActionState, form: FormData) {
+  let imported: Awaited<ReturnType<typeof importDocument>> | undefined;
+  const result = await run(async () => {
+    const b = await needBusiness(form), file = form.get("file");
+    if (!(file instanceof File) || !file.size || file.size > maxUploadBytes) throw new DomainError("fileSize");
+    const purpose = purposeSchema.parse(form.get("purpose") ?? "auto");
+    imported = await importDocument(b, Buffer.from(await file.arrayBuffer()), file.name, purpose);
+  });
+  return { ...result, imported };
+}
+export async function changeDocumentCategory(_: ActionState, form: FormData) {
   return run(async () => {
-    const b = await needBusiness(form),
-      file = form.get("file");
-    if (!(file instanceof File) || !file.size || file.size > 20 * 1024 * 1024)
-      throw new DomainError("fileSize");
-    const bytes = Buffer.from(await file.arrayBuffer()),
-      sha = createHash("sha256").update(bytes).digest("hex");
-    const connection = await db();
-    if (
-      (
-        await connection.query(
-          "select id from documents where business_id=$1 and sha256=$2",
-          [b.id, sha],
-        )
-      ).rows.length
-    )
-      throw new DomainError("duplicate");
-    const id = randomUUID(),
-      isPdf = bytes.subarray(0, 5).toString() === "%PDF-";
-    let text = "",
-      status = "textReady",
-      metadata: Record<string, unknown> = {};
-    let statement: ReturnType<typeof parseMt940> | undefined;
-    if (isPdf) {
-      const { PDFParse } = await import("pdf-parse");
-      const parser = new PDFParse({ data: new Uint8Array(bytes) });
-      try {
-        const info = await parser.getInfo();
-        if (info.total > 100) throw new DomainError("pageLimit");
-        text = (await parser.getText()).text;
-        metadata = { pages: info.total };
-        status = text.replace(/\s/g, "").length > 50 ? "textReady" : "needsOcr";
-      } catch (e) {
-        if (e instanceof DomainError) throw e;
-        throw new DomainError("pdf");
-      } finally {
-        await parser.destroy();
-      }
-    } else {
-      text = bytes.toString("utf8");
-      if (!text.includes(":60F:")) throw new DomainError("fileType");
-      statement = parseMt940(text);
-      if (
-        statement.rows.some(
-          (r) => Number(r.date.slice(0, 4)) !== b.profile.year,
-        )
-      )
-        throw new DomainError("date");
-      metadata = { ...statement, rows: undefined };
-      status = "bankReady";
-    }
-    const uploadDir = path.join(dataDir, "uploads");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, id), bytes, { flag: "wx" });
-    try {
-      await writeActiveReport(b.id, async tx => {
-        // Serialize imports for this business so concurrent requests cannot bypass
-        // duplicate/overlap checks. Exact equal payments within one file are retained.
-        if (
-          (
-            await tx.query(
-              "select id from documents where business_id=$1 and sha256=$2",
-              [b.id, sha],
-            )
-          ).rows.length
-        )
-          throw new DomainError("duplicate");
-        if (statement) {
-          const previous = await tx.query<{ metadata: Record<string, string> }>(
-            "select metadata from documents where business_id=$1 and kind='mt940'",
-            [b.id],
-          );
-          if (
-            previous.rows.some(
-              ({ metadata: m }) =>
-                m.account === statement!.account &&
-                m.openingDate <= statement!.closingDate &&
-                m.closingDate >= statement!.openingDate,
-            )
-          )
-            throw new DomainError("overlap");
-        }
-        await tx.query(
-          "insert into documents(id,business_id,name,kind,status,sha256,text_content,metadata) values($1,$2,$3,$4,$5,$6,$7,$8)",
-          [
-            id,
-            b.id,
-            file.name.slice(0, 200),
-            isPdf ? "pdf" : "mt940",
-            status,
-            sha,
-            text.slice(0, 500000),
-            JSON.stringify(metadata),
-          ],
-        );
-        if (statement)
-          for (const [i, r] of statement.rows.entries())
-            await tx.query(
-              "insert into bank_rows(id,business_id,document_id,booking_date,amount,description,reference,position) values($1,$2,$3,$4,$5,$6,$7,$8)",
-              [
-                randomUUID(),
-                b.id,
-                id,
-                r.date,
-                r.amount,
-                r.description,
-                r.reference,
-                i,
-              ],
-            );
-      });
-    } catch (error) {
-      // Only remove this request's newly created UUID file after a DB rollback.
-      await unlink(path.join(uploadDir, id)).catch(() => {});
+    const b = await needBusiness(form), id = uuid(form.get("documentId"));
+    const reread = form.get("reread") === "invoice";
+    const { rows: [document] } = await (await db()).query<{ name: string; kind: string; purpose: string | null }>(
+      "select name,kind,metadata->>'purpose' as purpose from documents where business_id=$1 and id=$2",
+      [b.id, id],
+    );
+    if (!document) throw new DomainError("documentMissing");
+    if (reread && (document.kind !== "pdf" || !isInvoicePurpose(document.purpose))) throw new DomainError("documentCategoryChanged");
+    const purpose = reread && isInvoicePurpose(document.purpose) ? document.purpose : purposeSchema.parse(form.get("purpose"));
+    const bytes = await readFile(path.join(dataDir, "uploads", id)).catch(error => {
+      if (error.code === "ENOENT") throw new DomainError("documentMissing");
       throw error;
-    }
+    });
+    await importDocument(b, bytes, document.name, purpose, { id, reread });
+  });
+}
+export async function removeDocument(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form);
+    await deleteUnusedDocument(b.id, uuid(form.get("documentId")));
   });
 }
 export async function postBankRow(_: ActionState, form: FormData) {
   return run(async () => {
-    const b = await needBusiness(),
+    const b = await needBusiness(form),
       id = uuid(form.get("rowId")),
       counterpart = z.string().parse(form.get("account"));
     if (counterpart === "bank") throw new DomainError("account");

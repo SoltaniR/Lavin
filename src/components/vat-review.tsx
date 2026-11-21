@@ -1,20 +1,25 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { saveVatReturn } from "@/app/actions";
 import type { Workspace } from "@/lib/model";
 import { quarters, quarterlyVat, vatGuidance } from "@/lib/vat";
-import { ActionForm } from "./forms";
+import { vatFigures } from "@/lib/documents/vat-pdf";
+import { VatReturnForm } from "./vat-return-form";
 
-export async function VatReview({ workspace, quarter, locale }: {
+export async function VatReview({ workspace, quarter, locale, selectedSource }: {
   workspace: Workspace;
   quarter: number;
   locale: string;
+  selectedSource?: string;
 }) {
   const t = await getTranslations();
   const { business, documents } = workspace;
   const year = business.profile.year as 2025 | 2026;
   const review = quarterlyVat(workspace, quarter);
-  const pdfs = documents.filter(d => d.kind === "pdf");
+  const pdfs = documents.filter(d => d.kind === "pdf" && (!d.purpose || d.purpose === "vat" || d.purpose === "evidence" || d.id === review.filed?.source_id))
+    .map(d => ({
+      id: d.id, name: d.name, suggestion: d.vat_suggestion ?? vatFigures(d.text_content),
+      usedIn: workspace.vatReturns.find(filed => filed.source_id === d.id && filed.quarter !== quarter)?.quarter,
+    }));
   const money = new Intl.NumberFormat(locale === "nl" ? "nl-NL" : "en-GB", { style: "currency", currency: "EUR" });
   const format = (amount?: string | null) => amount == null ? "—" : money.format(Number(amount));
   const documentName = (id: string) => documents.find(d => d.id === id)?.name;
@@ -43,6 +48,8 @@ export async function VatReview({ workspace, quarter, locale }: {
       <p className="help">{t("vat.rounding")}</p>
       {!review.eligible && <p className="notice">{t("vat.scopeHelp")} <Link className="guide-link" href="/?view=business">{t("nav.business")}</Link></p>}
       <ul className="vat-issues">
+        {review.duplicateSource && <li>{t("errors.vatSourcePeriod")}</li>}
+        {!review.filed && <li>{t("imports.missingQuarterHelp")}</li>}
         {!review.invoices.length && <li>{t("vat.noInvoices")}</li>}
         {review.missingSources > 0 && <li>{t("vat.missingInvoices", { count: review.missingSources })}</li>}
         {review.other > 0 && <li>{t("vat.otherEntries", { count: review.other })}</li>}
@@ -51,9 +58,11 @@ export async function VatReview({ workspace, quarter, locale }: {
       {review.invoices.length > 0 && <details>
         <summary>{t("vat.invoiceList", { count: review.invoices.length })}</summary>
         <ul className="vat-invoices">
-          {review.invoices.map(({ entry, vat }) => <li key={entry.id}>
+          {review.invoices.map(({ entry, vat, hasInvoiceSource }) => <li key={entry.id}>
             <span>{entry.entry_date} · {entry.description} · {format(vat)}</span>
-            {entry.source_id && <a className="text-link" href={`/api/documents/${entry.source_id}`}>{documentName(entry.source_id)}</a>}
+            {hasInvoiceSource && entry.source_id
+              ? <a className="text-link" href={`/api/documents/${entry.source_id}`}>{documentName(entry.source_id)}</a>
+              : <span className="muted"> · {t("vat.missingInvoice")}</span>}
           </li>)}
         </ul>
       </details>}
@@ -63,19 +72,9 @@ export async function VatReview({ workspace, quarter, locale }: {
       <p className="help">{t("vat.captureHelp")}</p>
       {review.filed && <p><a className="text-link" href={`/api/documents/${review.filed.source_id}`}>{t("vat.viewOriginal")}</a></p>}
       {pdfs.length === 0 ? <Link href="/?view=documents" className="button secondary">{t("vat.uploadFirst")}</Link> :
-        <ActionForm key={`${business.id}:${quarter}`} action={saveVatReturn} label={t("vat.save")}>
-          <input type="hidden" name="businessId" value={business.id} />
-          <input type="hidden" name="quarter" value={quarter} />
-          <div className="form-grid">
-            <label className="wide">{t("vat.source")}<select name="sourceId" required defaultValue={review.filed?.source_id ?? ""}>
-              <option value="">{t("vat.chooseSource")}</option>
-              {pdfs.map(pdf => <option key={pdf.id} value={pdf.id}>{pdf.name}</option>)}
-            </select></label>
-            <label>{t("vat.output")}<input name="filedOutput" inputMode="text" pattern="-?[0-9]{1,10}" required defaultValue={review.filed?.filed_output} /></label>
-            <label>{t("vat.input")}<input name="filedInput" inputMode="text" pattern="-?[0-9]{1,10}" required defaultValue={review.filed?.filed_input} /></label>
-            <label className="wide">{t("vat.note")}<textarea name="note" rows={3} maxLength={2000} defaultValue={review.filed?.note ?? ""} /></label>
-          </div>
-        </ActionForm>}
+        <VatReturnForm key={JSON.stringify([business.id, quarter, review.filed, selectedSource])}
+          businessId={business.id} quarter={quarter} year={year} filed={review.filed}
+          sources={pdfs} selectedSource={selectedSource} />}
     </section>
     <p><a className="text-link" href={vatGuidance[year]} target="_blank" rel="noreferrer">{t("vat.official", { year })}</a></p>
   </>;

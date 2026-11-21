@@ -3,7 +3,7 @@ import { z } from "zod";
 import { accounts, type Journal, type Line, type Profile } from "./model";
 
 export class DomainError extends Error {}
-export const moneySchema = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/);
+export const moneySchema = z.string().regex(/^\d{1,10}([.,]\d{1,2})?$/).transform(value => value.replace(",", "."));
 const knownAccounts = new Set(accounts.map((a) => a.code));
 export const purchaseAccounts = accounts.filter((a) =>
   a.kind === "expense" || ["inventory", "equipment", "deposit", "prepayments"].includes(a.code),
@@ -15,7 +15,7 @@ export const entrySchema = z.object({
   debit: z.string(),
   credit: z.string(),
   amount: moneySchema,
-  vat: moneySchema.default("0"),
+  vat: moneySchema,
   requestKey: z.string().uuid(),
   sourceId: z.union([z.string().uuid(), z.literal("")]).default(""),
 });

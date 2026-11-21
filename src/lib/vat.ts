@@ -1,6 +1,6 @@
 import Decimal from "decimal.js";
 import { z } from "zod";
-import type { Workspace } from "./model";
+import type { Document, Workspace } from "./model";
 
 export const quarters = [1, 2, 3, 4] as const;
 export const quarterSchema = z.enum(["1", "2", "3", "4"]).transform(Number);
@@ -18,12 +18,17 @@ export const vatGuidance = {
   2026: "https://download.belastingdienst.nl/belastingdienst/docs/toelichting_bij_btw_aangifte_ob0731t63fd.pdf",
 };
 
+export function isInvoiceOriginal(document: Pick<Document, "kind" | "purpose">) {
+  return (document.kind === "pdf" || document.kind === "xml") && document.purpose !== "bank" && document.purpose !== "vat";
+}
+
 export function quarterlyVat(workspace: Workspace, quarter: number) {
   const { business, entries, documents, bankRows, vatReturns } = workspace;
   const { year, vatMethod, vatScope } = business.profile;
   const inQuarter = (date: string) => Number(date.slice(0, 4)) === year &&
     Math.ceil(Number(date.slice(5, 7)) / 3) === quarter;
-  const sources = new Set(documents.filter(d => d.kind === "pdf").map(d => d.id));
+  const returnSources = new Set(vatReturns.map(v => v.source_id));
+  const sources = new Set(documents.filter(d => isInvoiceOriginal(d) && !returnSources.has(d.id)).map(d => d.id));
   const invoices = [];
   let output = new Decimal(0), input = new Decimal(0), other = 0, missingSources = 0;
 
@@ -34,7 +39,8 @@ export function quarterlyVat(workspace: Workspace, quarter: number) {
       if (vatLines.length || entry.lines.some(line => line.account === "sales")) other++;
       continue;
     }
-    if (!entry.source_id || !sources.has(entry.source_id)) missingSources++;
+    const hasInvoiceSource = entry.source_id != null && sources.has(entry.source_id);
+    if (!hasInvoiceSource) missingSources++;
     // Old data could contain purchases posted straight to the input-VAT account.
     // Skip ambiguous posting shapes rather than treating their total as VAT.
     const account = entry.kind === "sale" ? "vatOutput" : "vatInput";
@@ -45,10 +51,11 @@ export function quarterlyVat(workspace: Workspace, quarter: number) {
     const vat = new Decimal(vatLines[0]?.[entry.kind === "sale" ? "credit" : "debit"] ?? 0);
     if (entry.kind === "sale") output = output.plus(vat);
     else input = input.plus(vat);
-    invoices.push({ entry, vat: vat.toFixed(2) });
+    invoices.push({ entry, vat: vat.toFixed(2), hasInvoiceSource });
   }
 
   const filed = vatReturns.find(v => v.quarter === quarter);
+  const duplicateSource = filed != null && vatReturns.some(v => v.quarter !== quarter && v.source_id === filed.source_id);
   const eligible = vatMethod === "invoice" && vatScope === "ordinaryQuarterly";
   const unposted = bankRows.filter(row => inQuarter(row.booking_date) && !row.posted_entry).length;
   const rows = [
@@ -57,14 +64,15 @@ export function quarterlyVat(workspace: Workspace, quarter: number) {
   ].map(row => ({
     ...row,
     booked: row.booked.toFixed(2),
-    difference: eligible && row.filed !== undefined ? row.booked.minus(row.filed).toFixed(2) : null,
+    difference: eligible && !duplicateSource && row.filed !== undefined ? row.booked.minus(row.filed).toFixed(2) : null,
   }));
   const differences = rows.some(row => row.difference !== null && !new Decimal(row.difference).isZero());
   const needsReview = !invoices.length || Boolean(other || missingSources || unposted);
   const status = !eligible ? "scopeReview"
     : !filed ? "missingReturn"
+    : duplicateSource ? "needsReview"
     : differences ? "differenceFound"
     : needsReview ? "needsReview"
     : "totalsAgree";
-  return { rows, filed, eligible, invoices, missingSources, other, unposted, status };
+  return { rows, filed, eligible, invoices, missingSources, other, unposted, duplicateSource, status };
 }

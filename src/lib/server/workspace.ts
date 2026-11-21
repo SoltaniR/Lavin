@@ -11,6 +11,7 @@ import type {
   BankRow,
   Evidence,
   VatReturn,
+  InvoiceDraft,
   Workspace,
 } from "../model";
 import { DomainError } from "../accounting";
@@ -26,9 +27,9 @@ export async function businesses(trashed = false) {
   );
   return result.rows;
 }
-export async function currentBusiness(): Promise<Business | null> {
+export async function currentBusiness(reportId?: string): Promise<Business | null> {
   await requireAccess();
-  const selected = (await cookies()).get("business")?.value;
+  const selected = reportId ?? (await cookies()).get("business")?.value;
   if (!z.string().uuid().safeParse(selected).success) return null;
   const result = await (await db()).query<Business>(
     "select id,profile,created_at from businesses where id=$1 and trashed_at is null",
@@ -52,13 +53,15 @@ export async function needBusiness(form?: FormData) {
   if (form && form.get("businessId") !== b.id) throw new DomainError("workspaceChanged");
   return b;
 }
-export async function workspace(): Promise<Workspace | null> {
-  const business = await currentBusiness();
+export async function workspace(reportId?: string): Promise<Workspace | null> {
+  const business = await currentBusiness(reportId);
   if (!business) return null;
   const connection = await db();
-  const [documents, entries, bankRows, evidence, vatReturns] = await Promise.all([
+  const [documents, entries, bankRows, evidence, vatReturns, invoiceDrafts] = await Promise.all([
     connection.query<Document>(
-      "select id,name,kind,status,left(text_content,12000) as text_content,sha256,created_at::text from documents where business_id=$1 order by created_at desc",
+      "select id,name,kind,status,left(text_content,12000) as text_content,sha256,created_at::text," +
+      "metadata->>'purpose' as purpose,metadata->'vat' as vat_suggestion,metadata->'invoiceIssues' as invoice_issues," +
+      "metadata->'invoiceReadVersion' as invoice_read_version from documents where business_id=$1 order by created_at desc, id",
       [business.id],
     ),
     connection.query<Journal>(
@@ -79,6 +82,10 @@ export async function workspace(): Promise<Workspace | null> {
       "select quarter,source_id,filed_output::text,filed_input::text,note from vat_returns where business_id=$1 order by quarter",
       [business.id],
     ),
+    connection.query<InvoiceDraft>(
+      "select id,document_id,direction,fields,posted_entry from invoice_drafts where business_id=$1 and not dismissed order by document_id,position",
+      [business.id],
+    ),
   ]);
   return {
     business,
@@ -87,6 +94,7 @@ export async function workspace(): Promise<Workspace | null> {
     bankRows: bankRows.rows,
     evidence: evidence.rows,
     vatReturns: vatReturns.rows,
+    invoiceDrafts: invoiceDrafts.rows,
   };
 }
 export const uuid = (value: unknown) => z.string().uuid().parse(value);

@@ -1,5 +1,6 @@
 "use client";
 import {
+  startTransition,
   useActionState,
   useEffect,
   useRef,
@@ -8,11 +9,10 @@ import {
 } from "react";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { LoaderCircle, Check, UploadCloud } from "lucide-react";
+import { LoaderCircle, Check } from "lucide-react";
 import {
   saveProfile,
   saveEntry,
-  uploadDocument,
   saveEvidence,
   postBankRow,
   loadDemo,
@@ -25,6 +25,7 @@ import {
   type Document,
   type Profile,
   type BankRow,
+  type InvoiceDraft,
 } from "@/lib/model";
 import { purchaseAccounts } from "@/lib/accounting";
 
@@ -66,7 +67,12 @@ export function ActionForm({
   }, [state, reset, successHref]);
   return (
     <form action={submit} ref={ref} className={className} onSubmit={event => {
-      if (submitHidden) { event.preventDefault(); onNext?.(); }
+      event.preventDefault();
+      if (submitHidden) { onNext?.(); return; }
+      if (pending || !key) return;
+      // Keep inputs available for correction when the action returns a validation error.
+      const data = new FormData(event.currentTarget);
+      startTransition(() => submit(data));
     }}>
       <input type="hidden" name="requestKey" value={key} />
       <fieldset disabled={pending || Boolean(state.success && successHref)}>
@@ -112,6 +118,7 @@ export function DemoForm() {
 export function ProfileForm({ business, guided = false }: { business?: Business; guided?: boolean }) {
   const t = useTranslations(),
     p = business?.profile ?? defaultProfile;
+  const savedProfile = business ? JSON.stringify(p) : "new";
   const [step, setStep] = useState(1);
   const firstPanel = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -137,7 +144,7 @@ export function ProfileForm({ business, guided = false }: { business?: Business;
         <h2 tabIndex={-1} ref={heading}>{t(step === 1 ? "setup.basics" : "setup.records")}</h2>
         <p>{t(step === 1 ? "setup.basicsHelp" : "setup.recordsHelp")}</p></div>}
       {business && <input type="hidden" name="id" value={business.id} />}
-      <div ref={firstPanel} hidden={guided && step !== 1}>
+      <div key={`basics:${savedProfile}`} ref={firstPanel} hidden={guided && step !== 1}>
       <div className="form-grid">
         <label className="wide">
           {t("business.name")}
@@ -178,7 +185,7 @@ export function ProfileForm({ business, guided = false }: { business?: Business;
         </label>
       </div>
       </div>
-      <div hidden={guided && step !== 2}>
+      <div key={`records:${savedProfile}`} hidden={guided && step !== 2}>
       <div className="form-grid">
         <label className="wide">
           {t("business.vat")}
@@ -240,6 +247,7 @@ function AccountSelect({
   const t = useTranslations();
   return (
     <select name={name} defaultValue={initial} required>
+      {initial === "" && <option value="">{t("imports.chooseAccount")}</option>}
       {accounts.filter(filter ?? (() => true)).map((a) => (
         <option value={a.code} key={a.code}>
           {t(`account.${a.code}`)}
@@ -252,26 +260,34 @@ export function EntryForm({
   businessId,
   profile,
   documents,
+  draft,
 }: {
   businessId: string;
   profile: Profile;
   documents: Pick<Document, "id" | "name">[];
+  draft?: InvoiceDraft;
 }) {
   const t = useTranslations(),
-    [kind, setKind] = useState("sale");
+    [kind, setKind] = useState<string>(draft ? draft.direction ?? "" : "sale");
   const invoice = ["sale", "purchase"].includes(kind);
+  const fields = draft?.fields;
+  const invoiceVat = fields?.invoiceVat;
+  const vatAmount = useRef<HTMLInputElement>(null);
   return (
-    <ActionForm action={saveEntry} label={t("review.post")}>
+    <ActionForm action={saveEntry} label={t("review.post")} reset={!draft}>
       <input type="hidden" name="businessId" value={businessId} />
+      {draft && <input type="hidden" name="draftId" value={draft.id} />}
       <div className="form-grid">
         <label>
           {t("review.kind")}
           <select
             name="kind"
+            required
             value={kind}
             onChange={(e) => setKind(e.target.value)}
           >
-            {["sale", "purchase", "payment", "opening", "adjustment"].map(
+            {draft && <option value="">{t("imports.chooseDirection")}</option>}
+            {(draft ? ["sale", "purchase"] : ["sale", "purchase", "payment", "opening", "adjustment"]).map(
               (k) => (
                 <option key={k} value={k}>
                   {t(`review.${k}`)}
@@ -287,35 +303,46 @@ export function EntryForm({
             name="date"
             min={`${profile.year}-01-01`}
             max={`${profile.year}-12-31`}
-            defaultValue={`${profile.year}-01-01`}
+            defaultValue={draft ? fields?.date : profile.year + "-01-01"}
             required
           />
         </label>
         <label className="wide">
           {t("common.description")}
-          <input name="description" minLength={3} maxLength={240} required />
+          <input name="description" minLength={3} maxLength={240} required
+            defaultValue={fields?.description || (fields?.reference ? t("imports.invoiceDescription", { reference: fields.reference }) : "")} />
         </label>
         <label>
           {t("review.gross")}
           <input
             name="amount"
             inputMode="decimal"
-            pattern="[0-9]+(\.[0-9]{1,2})?"
+            pattern="[0-9]{1,10}([.,][0-9]{1,2})?"
             placeholder="0.00"
+            defaultValue={fields?.amount}
             required
           />
         </label>
         {invoice ? (
-          <label>
-            {t("review.vat")}
-            <input
-              name="vat"
-              inputMode="decimal"
-              pattern="[0-9]+(\.[0-9]{1,2})?"
-              defaultValue="0"
-              required
-            />
-          </label>
+          <div>
+            <label>
+              {t(kind === "purchase" ? "review.deductibleVat" : "review.vat")}
+              <input
+                key={kind}
+                ref={vatAmount}
+                name="vat"
+                inputMode="decimal"
+                pattern="[0-9]{1,10}([.,][0-9]{1,2})?"
+                placeholder="0.00"
+                defaultValue={kind === "sale" ? invoiceVat : undefined}
+                required
+              />
+            </label>
+            {kind === "purchase" && invoiceVat !== undefined &&
+              <button className="text-link import-full-vat" type="button" onClick={() => {
+                if (vatAmount.current) vatAmount.current.value = invoiceVat;
+              }}>{t("imports.useInvoiceVat")}</button>}
+          </div>
         ) : (
           <input type="hidden" name="vat" value="0" />
         )}
@@ -324,12 +351,12 @@ export function EntryForm({
             {t("review.category")}
             <AccountSelect
               name="debit"
-              initial="otherCosts"
+              initial={draft ? "" : "otherCosts"}
               filter={(a) => purchaseAccounts.includes(a)}
             />
           </label>
         )}
-        {!invoice && (
+        {!invoice && !draft && (
           <>
             <label>
               {t("common.debit")}
@@ -357,42 +384,26 @@ export function EntryForm({
           <input type="hidden" name="debit" value="receivables" />
         )}
         {invoice && <input type="hidden" name="credit" value="payables" />}
-        <label className="wide">
-          {t("common.source")}
+        {draft && !documents.length ? <input type="hidden" name="sourceId" value={draft.document_id} /> : <label className="wide">
+          {t(draft ? "imports.originalInvoice" : "common.source")}
           <select name="sourceId">
-            <option value="">{t("common.noSource")}</option>
+            <option value={draft?.document_id ?? ""}>{t(draft ? "imports.keepCsv" : "common.noSource")}</option>
             {documents.map((d) => (
               <option value={d.id} key={d.id}>
                 {d.name}
               </option>
             ))}
           </select>
-        </label>
+        </label>}
       </div>
+      {draft && fields?.reference && <details className="import-duplicate">
+        <summary>{t("imports.duplicateHelp")}</summary>
+        <label className="checkbox"><input type="checkbox" name="confirmDuplicate" />{t("imports.confirmDuplicate")}</label>
+      </details>}
       <p className="help">
-        {t(invoice ? "review.invoiceHelp" : "review.journalHelp")}{" "}
+        {t(kind === "purchase" ? "review.purchaseHelp" : invoice ? "review.invoiceHelp" : "review.journalHelp")}{" "}
         {t("review.amountHelp")}
       </p>
-    </ActionForm>
-  );
-}
-export function UploadForm({ businessId }: { businessId: string }) {
-  const t = useTranslations();
-  return (
-    <ActionForm action={uploadDocument} label={t("documents.submit")} reset nextHref="/?view=review">
-      <input type="hidden" name="businessId" value={businessId} />
-      <label className="upload-zone">
-        <UploadCloud size={30} />
-        <strong>{t("documents.choose")}</strong>
-        <span>{t("documents.accept")}</span>
-        <input
-          type="file"
-          name="file"
-          accept=".pdf,.mt940,.sta,.940,.txt"
-          required
-          aria-label={t("documents.choose")}
-        />
-      </label>
     </ActionForm>
   );
 }
@@ -413,6 +424,7 @@ export function EvidenceForm({
       <label>
         {t("common.notes")}
         <textarea
+          key={note}
           name="note"
           rows={3}
           minLength={5}
@@ -425,7 +437,7 @@ export function EvidenceForm({
     </ActionForm>
   );
 }
-export function BankForm({ row }: { row: BankRow }) {
+export function BankForm({ row, businessId }: { row: BankRow; businessId: string }) {
   const t = useTranslations();
   return (
     <ActionForm
@@ -434,6 +446,7 @@ export function BankForm({ row }: { row: BankRow }) {
       className="bank-form"
     >
       <input type="hidden" name="rowId" value={row.id} />
+      <input type="hidden" name="businessId" value={businessId} />
       <label>
         <span className="sr-only">{t("common.account")}</span>
         <AccountSelect
