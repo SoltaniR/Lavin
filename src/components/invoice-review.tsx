@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { dismissInvoice } from "@/app/actions";
+import { dismissInvoice, updateInvoiceDetails } from "@/app/actions";
 import { invoiceReadVersion, isInvoicePurpose, type InvoiceDraft, type Workspace } from "@/lib/model";
 import { isInvoiceOriginal } from "@/lib/vat";
 import { ActionForm, EntryForm } from "./forms";
 import { RereadInvoicePdfs } from "./document-upload";
+import { exchangeCurrencies } from "@/lib/documents/exchange-rates";
 
 export async function InvoiceReview({ workspace, selectedId, page, locale }: {
   workspace: Workspace;
@@ -18,7 +19,7 @@ export async function InvoiceReview({ workspace, selectedId, page, locale }: {
   const missingFields = (draft: InvoiceDraft) => [
     ...(!draft.direction ? ["direction"] : []),
     ...(!draft.fields.date ? ["date"] : !draft.fields.date.startsWith(business.profile.year + "-") ? ["year"] : []),
-    ...(!draft.fields.amount ? ["total"] : []),
+    ...(draft.fields.foreign && !draft.fields.exchange ? ["exchange"] : !draft.fields.amount ? ["total"] : []),
     ...(draft.fields.invoiceVat === undefined ? ["vat"] : []),
     ...(!draft.fields.reference && !draft.fields.description ? ["reference"] : []),
   ];
@@ -26,6 +27,9 @@ export async function InvoiceReview({ workspace, selectedId, page, locale }: {
   const incomplete = [...withGaps.values()].filter(fields => fields.length).length;
   const selected = pending.find(draft => draft.id === selectedId);
   const source = documents.find(document => document.id === selected?.document_id);
+  const suggestion = selected?.fields.dateSuggestion;
+  const foreign = selected?.fields.foreign;
+  const exchange = selected?.fields.exchange;
   const byId = new Map(documents.map(document => [document.id, document.name]));
   const money = new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" });
   const format = (amount?: string) => amount ? money.format(Number(amount)) : t("imports.missingField");
@@ -71,12 +75,45 @@ export async function InvoiceReview({ workspace, selectedId, page, locale }: {
           ? t("imports.pdfPages", { first: selected.fields.page, last: selected.fields.lastPage })
           : t("imports.pdfPage", { page: selected.fields.page })}</p>}
         <p>{t("imports.readVat", { amount: format(selected.fields.invoiceVat) })}</p>
+        {!selected.fields.date && suggestion && <ActionForm action={updateInvoiceDetails} label={t("imports.useSuggestedDate")}>
+          <input type="hidden" name="businessId" value={business.id} />
+          <input type="hidden" name="draftId" value={selected.id} />
+          <input type="hidden" name="intent" value="confirmDate" />
+          <p className="help">{t("imports.suggestedDate", { label: suggestion.label, date: suggestion.date })}</p>
+          {suggestion.supplier && <label className="checkbox">
+            <input type="checkbox" name="remember" defaultChecked />
+            {t("imports.rememberDate", { supplier: suggestion.supplier.name })}
+          </label>}
+        </ActionForm>}
+        {foreign && <details className="import-duplicate" open={!exchange}>
+          <summary>{exchange ? t("imports.exchangeSummary", {
+            currency: exchange.currency, amount: foreign.amount ?? "", rate: exchange.unitsPerEuro, date: exchange.date,
+          }) : t("imports.exchangeReview")}</summary>
+          <ActionForm key={JSON.stringify(exchange)} action={updateInvoiceDetails} label={t("imports.calculateEuros")}>
+            <input type="hidden" name="businessId" value={business.id} />
+            <input type="hidden" name="draftId" value={selected.id} />
+            <input type="hidden" name="intent" value="exchange" />
+            <div className="form-grid">
+              <label>{t("imports.invoiceCurrency")}<select name="currency" required defaultValue={foreign.currency ?? ""}>
+                <option value="">{t("imports.chooseCurrency")}</option>
+                {exchangeCurrencies.map(code => <option key={code} value={code}>{code}</option>)}
+              </select></label>
+              <label>{t("common.date")}<input name="invoiceDate" type="date" min={business.profile.year + "-01-01"}
+                max={business.profile.year + "-12-31"} defaultValue={selected.fields.date ?? suggestion?.date} required /></label>
+              <label>{t("imports.originalAmount")}
+                <input name="originalAmount" inputMode="decimal" defaultValue={foreign.amount} required /></label>
+              <label>{t("imports.originalVat")}
+                <input name="originalVat" inputMode="decimal" defaultValue={foreign.vat} /></label>
+            </div>
+            <p className="help">{t("imports.exchangeHelp")}</p>
+          </ActionForm>
+        </details>}
         {withGaps.get(selected.id)?.map(field => <p className="help" key={field}>{t("imports.gaps." + field)}</p>)}
         <Link className="text-link" href={href + currentPage + "#invoice-review"}>{t("imports.backToDrafts")}</Link>
       </div>
-      <EntryForm key={selected.id} businessId={business.id} profile={business.profile} draft={selected}
+      {(!foreign || exchange) && <EntryForm key={JSON.stringify([selected.id, selected.fields.date, exchange])} businessId={business.id} profile={business.profile} draft={selected}
         documents={source.kind === "csv" ? documents.filter(d => isInvoiceOriginal(d) &&
-          !workspace.vatReturns.some(filed => filed.source_id === d.id)).map(({ id, name }) => ({ id, name })) : []} />
+          !workspace.vatReturns.some(filed => filed.source_id === d.id)).map(({ id, name }) => ({ id, name })) : []} />}
       <ActionForm key={"dismiss:" + selected.id} action={dismissInvoice} label={t("imports.dismiss")} className="quiet-action">
         <input type="hidden" name="businessId" value={business.id} />
         <input type="hidden" name="draftId" value={selected.id} />

@@ -4,7 +4,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { accounts } from "../model";
 
-const migrations = ["0001_core.sql", "0002_vat_returns.sql", "0003_report_trash.sql", "0004_document_imports.sql"];
+const migrations = ["0001_core.sql", "0002_vat_returns.sql", "0003_report_trash.sql", "0004_document_imports.sql", "0005_invoice_date_rules.sql"];
 const schemaVersion = migrations.join(",");
 const globalDb = globalThis as typeof globalThis & {
   lavinDb?: Promise<PGlite>;

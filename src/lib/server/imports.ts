@@ -5,11 +5,12 @@ import path from "node:path";
 import type { Transaction } from "@electric-sql/pglite";
 import { z } from "zod";
 import { DomainError } from "../accounting";
-import { invoiceReadVersion, isInvoicePurpose, uploadPurposes, type Business, type InvoiceFields } from "../model";
+import { invoiceReadVersion, isInvoicePurpose, uploadPurposes, type Business, type InvoiceDateAlias, type InvoiceFields } from "../model";
 import { normalizedBankAccount } from "../documents/bank-pdf";
 import { prepareUpload, type ImportPurpose } from "../documents/prepare";
 import { db, dataDir } from "./db";
 import { writeActiveReport } from "./workspace";
+import { withExchangeRate } from "./invoice-exchange";
 
 export const purposeSchema = z.enum(uploadPurposes);
 export const maxUploadBytes = 20 * 1024 * 1024;
@@ -60,6 +61,25 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
   )).rows.length) throw new DomainError("duplicate");
 
   const { kind, text, status, statement, invoices, vat, purpose: detected, pages, invoiceIssues } = await prepareUpload(bytes, name, purpose);
+  const suppliers = [...new Set((invoices ?? []).flatMap(invoice => invoice.dateSuggestion?.supplier ? [invoice.dateSuggestion.supplier.key] : []))];
+  const rules = suppliers.length ? (await connection.query<{ supplier_key: string; date_label: InvoiceDateAlias }>(
+    "select supplier_key,date_label from invoice_date_rules where supplier_key=any($1::text[])", [suppliers],
+  )).rows : [];
+  const bySupplier = new Map(rules.map(rule => [rule.supplier_key, rule.date_label]));
+  const resolvedInvoices = await Promise.all((invoices ?? []).map(invoice => {
+    const suggestion = invoice.dateSuggestion;
+    const date = invoice.date ?? (suggestion?.supplier && bySupplier.get(suggestion.supplier.key) === suggestion.label
+      ? suggestion.date : undefined);
+    return invoice.foreign ? withExchangeRate({ ...invoice, date }, business.profile.year) : { ...invoice, date };
+  }));
+  const issues = invoiceIssues?.filter(issue =>
+    issue === "fxPending" ? resolvedInvoices.some(invoice => invoice.foreign && !invoice.exchange)
+      : issue === "missingFields" ? resolvedInvoices.some(invoice => !invoice.date || !invoice.reference ||
+        (invoice.foreign ? !invoice.foreign.amount || invoice.foreign.vat === undefined
+          : !invoice.amount || invoice.invoiceVat === undefined))
+        : true,
+  );
+  const finalStatus = status === "invoicePartial" && resolvedInvoices.length && !issues?.length ? "invoiceReady" : status;
   if (statement?.rows.some(row => !row.date.startsWith(business.profile.year + "-"))) throw new DomainError("date");
   const id = existingId ?? randomUUID();
   const original = path.join(dataDir, "uploads", id);
@@ -80,14 +100,14 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
             [business.id, id],
           );
           dismissedFields = dismissed.rows.map(row => row.fields);
-        } else if (current.purpose === detected && current.status === status) return;
+        } else if (current.purpose === detected && current.status === finalStatus) return;
         await clearDocumentImports(tx, business.id, existingId);
       } else if ((await tx.query(
         "select 1 from documents where business_id=$1 and sha256=$2", [business.id, sha],
       )).rows.length) throw new DomainError("duplicate");
 
       const metadata = JSON.stringify({
-        ...statement, rows: undefined, purpose: detected, pages, vat, invoiceIssues,
+        ...statement, rows: undefined, purpose: detected, pages, vat, invoiceIssues: issues,
         invoiceReadVersion: kind === "pdf" && isInvoicePurpose(detected) ? invoiceReadVersion : undefined,
       });
       if (statement) {
@@ -103,11 +123,11 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
       }
       if (existingId) {
         await tx.query("update documents set kind=$1,status=$2,text_content=$3,metadata=$4 where id=$5 and business_id=$6",
-          [kind, status, text.slice(0, 500000), metadata, id, business.id]);
+          [kind, finalStatus, text.slice(0, 500000), metadata, id, business.id]);
       } else {
         await tx.query(
           "insert into documents(id,business_id,name,kind,status,sha256,text_content,metadata) values($1,$2,$3,$4,$5,$6,$7,$8)",
-          [id, business.id, name.slice(0, 200), kind, status, sha, text.slice(0, 500000), metadata],
+          [id, business.id, name.slice(0, 200), kind, finalStatus, sha, text.slice(0, 500000), metadata],
         );
       }
 
@@ -120,8 +140,8 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
           [business.id, id, JSON.stringify(rows)],
         );
       }
-      if (invoices?.length) {
-        const rows = invoices.map((fields, position) => ({
+      if (resolvedInvoices.length) {
+        const rows = resolvedInvoices.map((fields, position) => ({
           id: randomUUID(), fields, position,
           dismissed: dismissedFields.some(prior => prior.page === fields.page && prior.reference === fields.reference),
         }));
@@ -137,5 +157,5 @@ export async function importDocument(business: Business, bytes: Buffer, name: st
     if (!existingId) await unlink(original).catch(() => {});
     throw error;
   }
-  return { status, purpose: detected };
+  return { status: finalStatus, purpose: detected };
 }

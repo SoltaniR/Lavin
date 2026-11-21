@@ -304,6 +304,7 @@ export function EntryForm({
             min={`${profile.year}-01-01`}
             max={`${profile.year}-12-31`}
             defaultValue={draft ? fields?.date : profile.year + "-01-01"}
+            readOnly={Boolean(fields?.exchange)}
             required
           />
         </label>
@@ -320,6 +321,7 @@ export function EntryForm({
             pattern="[0-9]{1,10}([.,][0-9]{1,2})?"
             placeholder="0.00"
             defaultValue={fields?.amount}
+            readOnly={Boolean(fields?.exchange)}
             required
           />
         </label>

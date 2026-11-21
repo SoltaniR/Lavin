@@ -1,4 +1,6 @@
 import { labeled, sourceDate, sourceMoney } from "./fields";
+import { invoiceDateAliases, type DateSuggestion, type ForeignAmount } from "../model";
+import { exchangeCurrencies } from "./exchange-rates";
 
 export const foldInvoiceText = (text: string) =>
   text.normalize("NFD").replace(/\p{M}/gu, "").replace(/ı/g, "i").toLowerCase();
@@ -42,11 +44,80 @@ function invoiceDate(value: string) {
   return month && named ? sourceDate([named[5], month, named[1] ?? named[4]].join("-")) : undefined;
 }
 
-const money = (amount: string) => sourceMoney(amount
-  .replace(/^\(\s*(?:EUR|€)\s*\)\s*/i, "")
-  .replace(/([.,])[-–](?=\s*(?:EUR|€)?$)/i, (_, separator) => separator + "00"));
-const vatMoney = (amount: string) =>
-  money(amount.replace(/^(?:\(\s*%?\s*\d+(?:[.,]\d+)?\s*%?\s*\)|(?:%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%)(?=\s|:))[\s:]*/, ""));
+const currencies = [...exchangeCurrencies, "RUB", "AED", "SAR", "UAH", "TWD", "VND", "NGN", "KES", "ARS", "CLP", "COP", "EGP", "PKR", "MAD"];
+const foreignCode = currencies.join("|") + "|TL";
+const currencyToken = new RegExp("^(?:" + foreignCode + ")\\s*|\\s*(?:" + foreignCode + ")$", "i");
+const currencyAmount = new RegExp("(?:\\b(" + foreignCode + ")\\s*[-+]?\\d|\\d\\s*(" + foreignCode + ")\\b)", "gi");
+const readCurrencyCode = (code: string) => code.toUpperCase() === "TL" ? "TRY" : code.toUpperCase();
+
+export function invoiceCurrency(lines: string[]): ForeignAmount | undefined {
+  const text = lines.join("\n");
+  const header = labeled(lines.map(foldInvoiceText), /^(?:(?:invoice )?currency(?: code)?|valuta|para birimi)(?=$|\s|[:=])/, value =>
+    /^[a-z]{3}$/i.test(value) ? readCurrencyCode(value) : undefined,
+  );
+  if (header) return header === "EUR" ? undefined : { currency: header };
+  const codes = new Set([...text.matchAll(currencyAmount)].map(match => readCurrencyCode(match[1] ?? match[2])));
+  const totalCurrency = labeled(lines.map(foldInvoiceText), grossLabel, value => {
+    const code = value.match(/^\(([a-z]{3})\)/)?.[1];
+    return code && currencies.includes(code.toUpperCase()) ? code.toUpperCase() : undefined;
+  });
+  if (totalCurrency) codes.add(totalCurrency);
+  if (/\bUS\$/i.test(text)) codes.add("USD");
+  if (/\b(?:CA|C)\$/i.test(text)) codes.add("CAD");
+  if (/\b(?:AU|A)\$/i.test(text)) codes.add("AUD");
+  if (/₺/.test(text)) codes.add("TRY");
+  if (/£/.test(text)) codes.add("GBP");
+  if (codes.size || /[$¥]/.test(text)) return { currency: codes.size === 1 ? [...codes][0] : undefined };
+}
+
+function money(value: string, foreign?: ForeignAmount) {
+  let amount = value.replace(/^\(\s*(?:EUR|€)\s*\)\s*/i, "");
+  if (foreign) {
+    if (/€|\bEUR\b/i.test(amount)) return undefined;
+    const code = amount.match(/^\(([a-z]{3})\)/i)?.[1] ?? amount.match(currencyToken)?.[0].trim();
+    if (code && foreign.currency && readCurrencyCode(code) !== foreign.currency) return undefined;
+    amount = amount.replace(/^\([a-z]{3}\)\s*/i, "").replace(currencyToken, "")
+      .replace(/^\s*(?:US|CA|AU|C|A)?[$£¥₺]\s*|\s*[$£¥₺]\s*$/gi, "");
+  }
+  return sourceMoney(amount.replace(/([.,])[-–](?=\s*(?:EUR|€)?$)/i, (_, separator) => separator + "00"));
+}
+const withoutRate = (amount: string) =>
+  amount.replace(/^(?:\(\s*%?\s*\d+(?:[.,]\d+)?\s*%?\s*\)|(?:%\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*%)(?=\s|:))[\s:]*/, "");
+
+export function joinInvoiceColumns(lines: string[]) {
+  const result: string[] = [];
+  for (let i = 0; i < lines.length;) {
+    const start = i;
+    while (i < lines.length && /^[\p{L}][\p{L} .#/-]{0,35}:$/u.test(lines[i])) i++;
+    const labels = lines.slice(start, i);
+    const values = lines.slice(i, i + labels.length);
+    // Some PDF exports emit a column of headings followed by a column of values.
+    const dateIndex = labels.findIndex(label => issueDateLabel.test(foldInvoiceText(label)) ||
+      invoiceDateAliases.includes(foldInvoiceText(label.slice(0, -1)) as DateSuggestion["label"]));
+    const referenceIndex = labels.findIndex(label => referenceLabel.test(foldInvoiceText(label)));
+    if (labels.length > 1 && referenceIndex >= 0 && dateIndex >= 0 && values.length === labels.length &&
+      invoiceDate(values[dateIndex]) && /^[\p{L}\d][\p{L}\d._/-]{0,79}$/u.test(values[referenceIndex])) {
+      result.push(...labels.map((label, index) => label + " " + values[index]));
+      i += labels.length;
+    } else {
+      if (labels.length) result.push(...labels);
+      else result.push(lines[i++]);
+    }
+  }
+  return result;
+}
+
+function identifySupplier(lines: string[]) {
+  // A contact domain corroborated by the issuer's website is used as a stable key.
+  const text = lines.join("\n");
+  const mail = new Set([...text.matchAll(/\b[\w.+-]+@([a-z\d-]+(?:\.[a-z\d-]+)+)\b/gi)].map(match => match[1].toLowerCase()));
+  const web = new Set([...text.matchAll(/https?:\/\/(?:www\.)?([a-z\d-]+(?:\.[a-z\d-]+)+)\b/gi)].map(match => match[1].toLowerCase()));
+  const domains = [...mail].filter(domain => web.has(domain));
+  if (domains.length !== 1) return undefined;
+  const domain = domains[0], brand = domain.split(".")[0];
+  const header = lines.slice(0, 12).find(line => foldInvoiceText(line).includes(brand) && !/https?:|@/.test(line));
+  if (header) return { key: domain, name: header.split(" - ")[0].slice(0, 90) };
+}
 
 export const invoiceTitle = (line: string) => titleLabel.test(foldInvoiceText(line));
 export const invoiceIdentityLine = (line: string) => {
@@ -54,22 +125,28 @@ export const invoiceIdentityLine = (line: string) => {
   return titleLabel.test(normalized) || referenceLabel.test(normalized) || issueDateLabel.test(normalized);
 };
 export const invoiceHint = (line: string) => invoiceIdentityLine(line) || grossLabel.test(foldInvoiceText(line));
-export const invoiceGross = (lines: string[]) => labeled(lines.map(foldInvoiceText), grossLabel, money);
+export const invoiceGross = (lines: string[]) => labeled(lines.map(foldInvoiceText), grossLabel, value => money(value, invoiceCurrency(lines)));
 export function readInvoiceFields(lines: string[]) {
   const normalized = lines.map(foldInvoiceText);
+  const foreign = invoiceCurrency(lines);
+  const date = labeled(normalized, issueDateLabel, invoiceDate) ?? labeled(normalized, dateLabel, invoiceDate);
+  const alternatives = invoiceDateAliases.flatMap(label => {
+    const value = labeled(normalized, new RegExp("^" + label + "(?=$|[\\s:=])"), invoiceDate);
+    return value ? [{ label, date: value }] : [];
+  });
+  const dateSuggestion = !date && alternatives.length === 1 ? { ...alternatives[0], supplier: identifySupplier(lines) } : undefined;
+  const tax = (value: string) => money(withoutRate(value), foreign);
   return {
-    date: labeled(normalized, issueDateLabel, invoiceDate) ?? labeled(normalized, dateLabel, invoiceDate),
-    amount: labeled(normalized, grossLabel, money),
-    invoiceVat: labeled(normalized, taxLabel, vatMoney),
-    net: labeled(normalized, netLabel, money),
+    date, dateSuggestion, foreign,
+    amount: labeled(normalized, grossLabel, value => money(value, foreign)),
+    invoiceVat: labeled(normalized, taxLabel, value => /[€$£¥₺%]|\b[A-Z]{3}\b/i.test(value) ? tax(value) : undefined)
+      ?? labeled(normalized, taxLabel, tax),
+    net: labeled(normalized, netLabel, value => money(value, foreign)),
   };
 }
 
 export function invoiceException(lines: string[]) {
   const text = foldInvoiceText(lines.join("\n"));
-  if (/\b(?:try|tl|usd|gbp|chf|jpy|cad|aud|sek|nok|pln|dkk|cny|rub|inr)\b(?=\s*[-+]?\d)|\d\s*(?:try|tl|usd|gbp|chf|jpy|cad|aud|sek|nok|pln|dkk|cny|rub|inr)\b|[₺$£¥]|(?:currency|valuta|para birimi)\s*[:=]\s*(?!eur\b|euro\b)[a-z]{3}\b/m.test(text)) {
-    return "nonEur" as const;
-  }
   if (/\b(?:creditnota|credit note|creditfactuur|reverse charge|btw verlegd|btw-verlegd|iade faturasi|tevkifat)\b/.test(text)) {
     return "special" as const;
   }

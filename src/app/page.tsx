@@ -68,6 +68,13 @@ export default async function Page({
     ...w.bankRows.filter(row => row.posted_entry).map(row => row.document_id),
     ...(w.invoiceDrafts ?? []).filter(draft => draft.posted_entry).map(draft => draft.document_id),
   ]) : undefined;
+  const bookedRates = new Map((w?.invoiceDrafts ?? []).flatMap(draft => {
+    const exchange = draft.fields.exchange;
+    return draft.posted_entry && exchange ? [[draft.posted_entry, t("imports.exchangeSummary", {
+      amount: draft.fields.foreign?.amount ?? "", currency: exchange.currency,
+      date: exchange.date, rate: exchange.unitsPerEuro,
+    })] as const] : [];
+  }));
   const money = (v: string) =>
     new Intl.NumberFormat(locale === "nl" ? "nl-NL" : "en-GB", {
       style: "currency",
@@ -461,6 +468,7 @@ export default async function Page({
                                 {i === 0 ? (
                                   <>
                                     {e.description}
+                                    {bookedRates.has(e.id) && <p className="help">{bookedRates.get(e.id)}</p>}
                                     {e.source_id && (
                                       <a
                                         className="source-link"

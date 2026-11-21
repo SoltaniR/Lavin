@@ -55,8 +55,13 @@ export const uploadPurposes = ["auto", "sale", "purchase", "bank", "vat", "evide
 export type DocumentPurpose = Exclude<(typeof uploadPurposes)[number], "auto"> | "invoice";
 export const isInvoicePurpose = (value: unknown): value is "sale" | "purchase" | "invoice" =>
   value === "sale" || value === "purchase" || value === "invoice";
-export const invoiceReadVersion = 2;
-export type InvoiceIssue = "unreadable" | "layout" | "missingFields" | "totalsConflict" | "nonEur" | "special";
+export const invoiceReadVersion = 3;
+export type InvoiceIssue = "unreadable" | "layout" | "missingFields" | "totalsConflict" | "nonEur" | "fxPending" | "special";
+export const invoiceDateAliases = ["created", "creation date", "aangemaakt", "olusturma tarihi"] as const;
+export type InvoiceDateAlias = (typeof invoiceDateAliases)[number];
+export type DateSuggestion = { label: InvoiceDateAlias; date: string; supplier?: { key: string; name: string } };
+export type ForeignAmount = { currency?: string; amount?: string; vat?: string };
+export type InvoiceRate = { date: string; unitsPerEuro: string; currency: string; invoiceDate: string };
 export type InvoiceFields = {
   reference?: string;
   date?: string;
@@ -66,6 +71,9 @@ export type InvoiceFields = {
   page?: number;
   lastPage?: number;
   row?: number;
+  dateSuggestion?: DateSuggestion;
+  foreign?: ForeignAmount;
+  exchange?: InvoiceRate;
 };
 export type InvoiceDraft = {
   id: string;

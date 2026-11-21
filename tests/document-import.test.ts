@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { pdfInvoices, csvInvoices, ublInvoice } from "../src/lib/documents/invoices";
 import { normalizedBankAccount, pdfStatement } from "../src/lib/documents/bank-pdf";
 import { vatFigures } from "../src/lib/documents/vat-pdf";
+import { convertInvoice, selectEcbRate } from "../src/lib/documents/exchange-rates";
 
 test("invoice bundles separate references and keep continuation totals with the source", () => {
   const result = pdfInvoices([
@@ -36,11 +37,42 @@ test("PDF invoice fields recognize Dutch, English and Turkish layouts", () => {
 test("foreign currency and unclear amounts are surfaced without inventing EUR bookings", () => {
   const turkish = "Fatura\nFatura No: TR-14\nFatura Tarihi: 18.11.2025 13:24\nVergiler Dahil Toplam Tutar: 1.200,00 TRY";
   const foreign = pdfInvoices([{ num: 1, text: turkish }]);
-  assert.deepEqual(foreign.invoices, []);
-  assert.deepEqual(foreign.issues, ["nonEur"]);
+  assert.equal(foreign.invoices[0].amount, undefined);
+  assert.deepEqual(foreign.invoices[0].foreign, { currency: "TRY", amount: "1200.00", vat: undefined });
+  assert.deepEqual(foreign.issues, ["missingFields", "fxPending"]);
   const incomplete = pdfInvoices([{ num: 1, text: turkish.replace("TRY", "EUR") }]);
   assert.equal(incomplete.invoices[0].invoiceVat, undefined);
   assert.deepEqual(incomplete.issues, ["missingFields"]);
+});
+
+test("a supplier's column-formatted Created date remains a suggestion until confirmed", () => {
+  const result = pdfInvoices([{ num: 1, text: [
+    "Orbit Hosting", "Orbit Hosting BV - Example street", "Invoice:", "Created:", "VAT ID:", "Due:", "Total:",
+    "INV-1206", "2026-04-17", "NL000000000B01", "2026-05-01", "€ 121,00",
+    "Subtotal: € 100,00", "VAT (21.00%): € 21,00", "Total: € 121,00",
+    "billing@orbit.example", "https://www.orbit.example/payments",
+  ].join("\n") }]);
+  const [invoice] = result.invoices;
+  assert.equal(invoice.reference, "INV-1206");
+  assert.equal(invoice.date, undefined);
+  assert.deepEqual(invoice.dateSuggestion, {
+    label: "created", date: "2026-04-17", supplier: { key: "orbit.example", name: "Orbit Hosting" },
+  });
+  assert.equal(invoice.invoiceVat, "21.00");
+});
+
+test("the ECB conversion selects on or before the invoice date and rounds exactly", () => {
+  const csv = "CURRENCY,CURRENCY_DENOM,TIME_PERIOD,OBS_VALUE\nUSD,EUR,2026-04-17,1.1797\nUSD,EUR,2026-04-20,1.176\n";
+  const exchange = selectEcbRate(csv, "USD", "2026-04-18")!;
+  assert.equal(exchange.date, "2026-04-17");
+  const result = convertInvoice({ date: "2026-04-18", foreign: { currency: "USD", amount: "117.97", vat: "0.00" } }, exchange);
+  assert.equal(result.amount, "100.00");
+  assert.equal(result.invoiceVat, "0.00");
+  assert.equal(selectEcbRate(csv, "USD", "2026-04-16"), undefined);
+  assert.equal(selectEcbRate(csv, "USD", "2026-04-28"), undefined);
+  const [ambiguous] = pdfInvoices([{ num: 1, text: "Invoice\nInvoice No. TEST-9\nInvoice date 2026-04-18\nVAT amount: $0.00\nTotal: $117.97" }]).invoices;
+  assert.equal(ambiguous.foreign?.currency, undefined);
+  assert.equal(ambiguous.foreign?.amount, "117.97");
 });
 
 test("UBL and spreadsheet CSV preserve references, VAT and exact totals", () => {

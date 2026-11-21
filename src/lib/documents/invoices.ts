@@ -4,7 +4,7 @@ import { XMLParser, XMLValidator } from "fast-xml-parser";
 import { DomainError } from "../accounting";
 import type { InvoiceFields, InvoiceIssue } from "../model";
 import { sourceDate, sourceMoney } from "./fields";
-import { invoiceException, invoiceGross, invoiceHint, invoiceReference, invoiceTitle, readInvoiceFields } from "./invoice-text";
+import { invoiceException, invoiceGross, invoiceHint, invoiceReference, invoiceTitle, joinInvoiceColumns, readInvoiceFields } from "./invoice-text";
 
 function checked(fields: InvoiceFields, net?: string) {
   const { amount, invoiceVat } = fields;
@@ -19,7 +19,7 @@ export function pdfInvoices(pages: { num: number; text: string }[]) {
   const blocks: { page: number; lastPage: number; reference?: string; lines: string[] }[] = [];
   const issues = new Set<InvoiceIssue>();
   for (const page of pages) {
-    const lines = page.text.normalize("NFC").split(/\r?\n|\t+/).map(line => line.trim()).filter(Boolean);
+    const lines = joinInvoiceColumns(page.text.normalize("NFC").split(/\r?\n|\t+/).map(line => line.trim()).filter(Boolean));
     if (!lines.length) { issues.add("unreadable"); continue; }
     const starts = lines.flatMap((line, i) => {
       const reference = invoiceReference(lines, i);
@@ -53,12 +53,17 @@ export function pdfInvoices(pages: { num: number; text: string }[]) {
   const invoices = blocks.flatMap(({ lines, page, lastPage, reference }) => {
     const exception = invoiceException(lines);
     if (exception) { issues.add(exception); return []; }
-    const { date, amount, invoiceVat, net } = readInvoiceFields(lines);
+    const { date, dateSuggestion, foreign, amount, invoiceVat, net } = readInvoiceFields(lines);
     const fields = checked({ page, lastPage, reference, date, amount, invoiceVat }, net);
     if (!fields) { issues.add("special"); return []; }
     if (amount && !fields.amount) issues.add("totalsConflict");
     else if (!fields.date || !fields.amount || fields.invoiceVat === undefined || !reference) issues.add("missingFields");
-    return [fields];
+    if (foreign) {
+      issues.add("fxPending");
+      return [{ ...fields, dateSuggestion, amount: undefined, invoiceVat: undefined,
+        foreign: { ...foreign, amount: fields.amount, vat: fields.invoiceVat } }];
+    }
+    return [{ ...fields, dateSuggestion }];
   });
   return { invoices, skipped: issues.size > 0, issues: [...issues] };
 }

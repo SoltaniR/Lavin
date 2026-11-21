@@ -14,17 +14,22 @@ import {
   defaultProfile,
   requirements,
   isInvoicePurpose,
+  type InvoiceFields,
   type Profile,
 } from "@/lib/model";
 import {
   entrySchema,
   buildLines,
   DomainError,
+  moneySchema,
   type EntryInput,
 } from "@/lib/accounting";
 import { deleteUnusedDocument, importDocument, maxUploadBytes, purposeSchema } from "@/lib/server/imports";
 import { vatFigures } from "@/lib/documents/vat-pdf";
 import { filedReturnSchema, isInvoiceOriginal } from "@/lib/vat";
+import { sourceDate } from "@/lib/documents/fields";
+import { exchangeCurrencies } from "@/lib/documents/exchange-rates";
+import { withExchangeRate } from "@/lib/server/invoice-exchange";
 
 export type ActionState = { error?: string; success?: boolean };
 export type ReportTrashState = ActionState & {
@@ -130,12 +135,16 @@ export async function saveEntry(_: ActionState, form: FormData) {
     await writeActiveReport(b.id, async tx => {
       if (draftId) {
         if (input.kind !== "sale" && input.kind !== "purchase") throw new DomainError("validation");
-        const { rows: [draft] } = await tx.query<{ document_id: string; reference: string | null; kind: string }>(
-          "select d.document_id,d.fields->>'reference' as reference,o.kind from invoice_drafts d join documents o on o.id=d.document_id " +
+        const { rows: [draft] } = await tx.query<{ document_id: string; fields: InvoiceFields; kind: string }>(
+          "select d.document_id,d.fields,o.kind from invoice_drafts d join documents o on o.id=d.document_id " +
           "where d.id=$1 and d.business_id=$2 and d.posted_entry is null and not d.dismissed",
           [draftId, b.id],
         );
         if (!draft) throw new DomainError("draftDone");
+        if (draft.fields.foreign && (!draft.fields.exchange ||
+          input.date !== draft.fields.exchange.invoiceDate || !new Decimal(input.amount).eq(draft.fields.amount!))) {
+          throw new DomainError("invoiceExchangeRequired");
+        }
         if (draft.document_id !== input.sourceId) {
           if (draft.kind !== "csv") throw new DomainError("sourceUsed");
           const { rows: [original] } = await tx.query<Parameters<typeof isInvoiceOriginal>[0]>(
@@ -145,12 +154,12 @@ export async function saveEntry(_: ActionState, form: FormData) {
           );
           if (!original || !isInvoiceOriginal(original)) throw new DomainError("sourceUsed");
         }
-        if (draft.reference && !form.has("confirmDuplicate")) {
+        if (draft.fields.reference && !form.has("confirmDuplicate")) {
           const existing = await tx.query(
             "select 1 from invoice_drafts d join entries e on e.id=d.posted_entry " +
             "where d.business_id=$1 and d.direction=$2 and lower(d.fields->>'reference')=lower($3) " +
             "and e.entry_date=$4 and (select max(greatest(debit,credit)) from lines where entry_id=e.id)=$5::numeric limit 1",
-            [b.id, input.kind, draft.reference, input.date, input.amount],
+            [b.id, input.kind, draft.fields.reference, input.date, input.amount],
           );
           if (existing.rows.length) throw new DomainError("invoiceDuplicate");
         }
@@ -162,6 +171,75 @@ export async function saveEntry(_: ActionState, form: FormData) {
       if (draftId) await tx.query(
         "update invoice_drafts set posted_entry=$1,direction=$2 where id=$3 and business_id=$4",
         [entry.post_entry, input.kind, draftId, b.id],
+      );
+    });
+  });
+}
+export async function updateInvoiceDetails(_: ActionState, form: FormData) {
+  return run(async () => {
+    const b = await needBusiness(form), id = uuid(form.get("draftId"));
+    const intent = z.enum(["confirmDate", "exchange"]).parse(form.get("intent"));
+    const { rows: [draft] } = await (await db()).query<{ document_id: string; fields: InvoiceFields }>(
+      "select document_id,fields from invoice_drafts where business_id=$1 and id=$2 and posted_entry is null and not dismissed",
+      [b.id, id],
+    );
+    if (!draft) throw new DomainError("draftDone");
+    const prior = draft.fields;
+    const suggestion = prior.dateSuggestion;
+    let updated: InvoiceFields;
+    if (intent === "confirmDate") {
+      if (!suggestion || prior.date) throw new DomainError("invoiceDraftChanged");
+      updated = { ...prior, date: suggestion.date };
+    } else {
+      if (!prior.foreign) throw new DomainError("invoiceDraftChanged");
+      const currency = z.enum(exchangeCurrencies).parse(form.get("currency"));
+      const originalAmount = moneySchema.parse(form.get("originalAmount"));
+      const originalVat = form.get("originalVat") === "" ? undefined : moneySchema.parse(form.get("originalVat"));
+      if (new Decimal(originalAmount).lte(0) || (originalVat !== undefined && new Decimal(originalVat).gte(originalAmount))) {
+        throw new DomainError("amount");
+      }
+      updated = {
+        ...prior, date: sourceDate(z.string().parse(form.get("invoiceDate"))),
+        foreign: { currency, amount: originalAmount, vat: originalVat },
+        amount: undefined, invoiceVat: undefined, exchange: undefined,
+      };
+    }
+    if (!updated.date?.startsWith(b.profile.year + "-")) throw new DomainError("date");
+    if (updated.foreign) updated = await withExchangeRate(updated, b.profile.year);
+    if (intent === "exchange" && !updated.exchange) throw new DomainError("invoiceExchangeUnavailable");
+    await writeActiveReport(b.id, async tx => {
+      const saved = await tx.query(
+        "update invoice_drafts set fields=$1::jsonb where business_id=$2 and id=$3 and fields=$4::jsonb " +
+        "and posted_entry is null and not dismissed returning id",
+        [JSON.stringify(updated), b.id, id, JSON.stringify(prior)],
+      );
+      if (!saved.rows.length) throw new DomainError("invoiceDraftChanged");
+      if (intent === "confirmDate" && form.get("remember") === "on" && suggestion?.supplier) {
+        await tx.query(
+          "insert into invoice_date_rules(supplier_key,date_label) values($1,$2) " +
+          "on conflict(supplier_key) do update set date_label=excluded.date_label",
+          [suggestion.supplier.key, suggestion.label],
+        );
+      }
+      const { rows } = await tx.query<{ fields: InvoiceFields }>(
+        "select fields from invoice_drafts where document_id=$1 and business_id=$2 and not dismissed",
+        [draft.document_id, b.id],
+      );
+      const stillMissing = rows.some(({ fields }) => !fields.date || !fields.reference ||
+        (fields.foreign ? !fields.foreign.amount || fields.foreign.vat === undefined
+          : !fields.amount || fields.invoiceVat === undefined));
+      const waitingForRate = rows.some(({ fields }) => fields.foreign && !fields.exchange);
+      await tx.query(
+        "update documents set metadata=jsonb_set(metadata,'{invoiceIssues}', " +
+        "coalesce((select jsonb_agg(issue) from jsonb_array_elements_text(metadata->'invoiceIssues') issue " +
+        "where (issue<>'missingFields' or $3) and (issue<>'fxPending' or $4)), '[]'::jsonb)) " +
+        "where id=$1 and business_id=$2",
+        [draft.document_id, b.id, stillMissing, waitingForRate],
+      );
+      await tx.query(
+        "update documents set status='invoiceReady' where id=$1 and business_id=$2 and status='invoicePartial' " +
+        "and metadata->'invoiceIssues'='[]'::jsonb",
+        [draft.document_id, b.id],
       );
     });
   });
